@@ -46,7 +46,7 @@ export default function About() {
                 <span className="group-hover:text-gradient-glow transition-all">Professional Summary</span>
               </h3>
             <p className="text-gray-600 dark:text-gray-400 leading-relaxed text-lg">
-              Computer Engineering graduate with a GPA of <strong>3.72/4.0</strong> (Excellent with Honor),
+              Computer Engineering graduate with a GPA of <strong>3.71/4.0</strong> (Excellent with Honor),
               possessing strong skills in software development, web applications, database design, and embedded systems.
               Experienced in problem-solving, data structures & algorithms, and project management.
               Currently serving as a <strong>Teaching Assistant at the Arab Academy for Science, Technology and 

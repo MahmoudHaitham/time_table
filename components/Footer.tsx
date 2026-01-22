@@ -12,7 +12,7 @@ const socialLinks = [
   {
     name: "LinkedIn",
     icon: Linkedin,
-    href: "https://linkedin.com/in/mahmoud-haisam",
+    href: "https://www.linkedin.com/in/mahmoud-haisam-756891287",
   },
   {
     name: "Email",

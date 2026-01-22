@@ -58,10 +58,10 @@ export const educationData = [
     institution: "Arab Academy for Science, Technology and Maritime Transport",
     location: "Alexandria, Egypt",
     period: "Sep 2020 - Sep 2025",
-    gpa: "3.72 / 4.0",
+    gpa: "3.71 / 4.0",
     grade: "Excellent with Honor",
     achievements: [
-      "GPA: 3.72 / 4.0",
+      "GPA: 3.71 / 4.0",
       "Graduated with Excellent with Honor",
       "Graduation Project: 3Bs Banking System",
     ],

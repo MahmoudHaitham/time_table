@@ -1,0 +1,807 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { motion } from "framer-motion";
+import { studentTimetableAPI } from "@/lib/api/timetable";
+import { Calendar, BookOpen, Clock, MapPin, User, Download, Users, ArrowLeft, X } from "lucide-react";
+import AlertModal from "@/components/ui/AlertModal";
+
+interface Course {
+  id: number;
+  code: string;
+  name: string;
+  is_elective: boolean;
+}
+
+interface Session {
+  id: number;
+  day: string;
+  slot: number;
+  room: string | null;
+  instructor: string | null;
+  component_type: string;
+  course: Course;
+  class: {
+    id: number;
+    class_code: string;
+  };
+}
+
+interface Schedule {
+  courses: Array<{
+    course: Course;
+    class: {
+      id: number;
+      class_code: string;
+    };
+    sessions: Session[];
+  }>;
+  sessions: Session[];
+  days: string[];
+  score: number;
+  excludedDaysUsed: number;
+  totalDays: number;
+  gaps: number;
+}
+
+const DAYS = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"];
+const SLOTS = [1, 2, 3, 4];
+
+export default function SchedulesPage() {
+  const params = useParams();
+  const router = useRouter();
+  const termToken = params.termId as string; // Now using token instead of ID
+
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [excludedDays, setExcludedDays] = useState<string[]>([]);
+  const [termNumber, setTermNumber] = useState<string>("");
+  const schedulesPerPage = 5;
+  const [alertModal, setAlertModal] = useState<{ isOpen: boolean; type: "success" | "error" | "warning" | "info"; title: string; message: string }>({
+    isOpen: false,
+    type: "error",
+    title: "",
+    message: "",
+  });
+
+  useEffect(() => {
+    if (termToken) {
+      // Load term number from sessionStorage (using token as key)
+      const storedTermNumber = sessionStorage.getItem(`term_number_${termToken}`);
+      if (storedTermNumber) {
+        setTermNumber(storedTermNumber);
+      } else {
+        setTermNumber("Term");
+      }
+      loadSchedules();
+    }
+  }, [termToken]);
+
+  const loadSchedules = async () => {
+    if (!termToken) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Get preferences from sessionStorage (using token as key)
+      const preferencesStr = sessionStorage.getItem(`timetable_preferences_${termToken}`);
+      const preferences = preferencesStr ? JSON.parse(preferencesStr) : {
+        excludedDays: [],
+        electiveCourseIds: undefined,
+        excludedCoreCourseIds: undefined,
+      };
+
+      setExcludedDays(preferences.excludedDays || []);
+
+      const response = await studentTimetableAPI.generateSchedules({
+        termId: termToken, // Send token instead of ID
+        excludedDays: preferences.excludedDays || [],
+        electiveCourseIds: preferences.electiveCourseIds,
+        excludedCoreCourseIds: preferences.excludedCoreCourseIds,
+      });
+
+      const schedulesData = response.data || [];
+      // Sort schedules by quality
+      const sortedSchedules = [...schedulesData].sort((a, b) => {
+        if (a.excludedDaysUsed !== b.excludedDaysUsed) {
+          return a.excludedDaysUsed - b.excludedDaysUsed;
+        }
+        if (a.totalDays !== b.totalDays) {
+          return a.totalDays - b.totalDays;
+        }
+        if (a.gaps !== b.gaps) {
+          return a.gaps - b.gaps;
+        }
+        return b.score - a.score;
+      });
+
+      setSchedules(sortedSchedules);
+      setCurrentPage(1);
+
+      if (schedulesData.length === 0 && response.message) {
+        setError(response.message);
+      } else if (schedulesData.length === 0) {
+        setError("No schedules found matching your preferences. Try adjusting your excluded days or elective courses.");
+      }
+    } catch (err: any) {
+      console.error("Error generating schedules:", err);
+      setError(err.message || "Failed to generate schedules");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDownloadPDF = async (schedule: Schedule, scheduleIndex: number) => {
+    try {
+      const jsPDF = (await import("jspdf")).default;
+      await import("jspdf-autotable");
+
+      const doc = new jsPDF({
+        orientation: "landscape",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+
+      // Create gradient background
+      const gradientSteps = 20;
+      for (let i = 0; i < gradientSteps; i++) {
+        const color = [
+          Math.floor(3 + (i / gradientSteps) * 10),
+          Math.floor(7 + (i / gradientSteps) * 15),
+          Math.floor(18 + (i / gradientSteps) * 25)
+        ];
+        doc.setFillColor(color[0], color[1], color[2]);
+        doc.rect(0, (i / gradientSteps) * pageHeight, pageWidth, pageHeight / gradientSteps, "F");
+      }
+
+      // Header
+      const headerHeight = 28;
+      for (let i = 0; i < headerHeight; i++) {
+        const ratio = i / headerHeight;
+        const r = Math.floor(6 + ratio * 53);
+        const g = Math.floor(182 + ratio * -52);
+        const b = Math.floor(212 + ratio * 34);
+        doc.setFillColor(r, g, b);
+        doc.rect(0, i, pageWidth, 1, "F");
+      }
+
+      doc.setDrawColor(167, 243, 208);
+      doc.setLineWidth(0.5);
+      doc.line(0, headerHeight, pageWidth, headerHeight);
+
+      doc.setFontSize(24);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(255, 255, 255);
+      doc.text("Student Timetable", 14, 17);
+
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(255, 255, 255);
+
+      const termNum = termNumber || "Term";
+      doc.setFillColor(255, 255, 255);
+      doc.rect(14, 21, 25, 6, "F");
+      doc.setTextColor(6, 182, 212);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Term ${termNum}`, 16.5, 24.5);
+
+      doc.setFillColor(167, 243, 208);
+      doc.rect(42, 21, 35, 6, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.text(`Schedule Option ${scheduleIndex + 1}`, 44, 24.5);
+
+      let statsY = 32;
+      const statsWidth = pageWidth - 20;
+      const statsHeight = 12;
+
+      doc.setFillColor(30, 41, 59);
+      doc.rect(10, statsY - 2, statsWidth, statsHeight, "F");
+
+      doc.setDrawColor(167, 243, 208);
+      doc.setLineWidth(0.5);
+      doc.rect(10, statsY - 2, statsWidth, statsHeight, "D");
+
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(167, 243, 208);
+
+      doc.setFillColor(6, 182, 212);
+      doc.rect(14, statsY, 30, 5, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.text(`${schedule.totalDays}`, 16, statsY + 3.2);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.text(`day(s)/week`, 22, statsY + 3.2);
+
+      if (schedule.gaps > 0) {
+        doc.setFillColor(59, 130, 246);
+        doc.rect(48, statsY, 25, 5, "F");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(255, 255, 255);
+        doc.text(`${schedule.gaps}`, 50, statsY + 3.2);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.text(`gap(s)`, 55, statsY + 3.2);
+      }
+
+      if (schedule.excludedDaysUsed > 0) {
+        doc.setFillColor(251, 191, 36);
+        doc.rect(77, statsY, 35, 5, "F");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(0, 0, 0);
+        doc.text(`${schedule.excludedDaysUsed} excluded`, 79, statsY + 3.2);
+      }
+
+      statsY += 8;
+
+      const tableData: any[][] = [];
+      const DAYS_ORDER = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"];
+      const SLOTS_ORDER = [1, 2, 3, 4];
+
+      const headers = ["Time", ...DAYS_ORDER];
+
+      SLOTS_ORDER.forEach((slot) => {
+        const row: any[] = [`Slot ${slot}`];
+
+        DAYS_ORDER.forEach((day) => {
+          const session = schedule.sessions.find(
+            (s) => s.day === day && s.slot === slot
+          );
+
+          if (session) {
+            const componentType = session.component_type === "L" ? "Lec" : session.component_type === "S" ? "Sec" : "Lab";
+            const cellText = `${session.course.code}\n${componentType}${session.room ? `\n${session.room}` : ""}`;
+            row.push(cellText);
+          } else {
+            row.push("");
+          }
+        });
+
+        tableData.push(row);
+      });
+
+      const tableStartY = statsY + 5;
+
+      doc.setDrawColor(167, 243, 208);
+      doc.setLineWidth(0.5);
+      doc.line(10, tableStartY - 3, pageWidth - 10, tableStartY - 3);
+
+      (doc as any).autoTable({
+        head: [headers],
+        body: tableData,
+        startY: tableStartY,
+        theme: "grid",
+        headStyles: {
+          fillColor: [6, 182, 212],
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+          fontSize: 10,
+          halign: "center",
+          lineColor: [167, 243, 208],
+          lineWidth: 0.5,
+        },
+        bodyStyles: {
+          fillColor: [255, 255, 255, 0.06],
+          textColor: [226, 232, 240],
+          fontSize: 8.5,
+          halign: "center",
+          valign: "middle",
+          lineColor: [203, 213, 225, 0.3],
+          lineWidth: 0.3,
+        },
+        alternateRowStyles: {
+          fillColor: [255, 255, 255, 0.1],
+        },
+        columnStyles: {
+          0: {
+            fillColor: [6, 182, 212, 0.25],
+            textColor: [167, 243, 208],
+            fontStyle: "bold",
+            halign: "center",
+            cellWidth: 32,
+            lineColor: [167, 243, 208, 0.5],
+          },
+        },
+        styles: {
+          cellPadding: 4,
+          lineWidth: 0.5,
+          lineColor: [203, 213, 225],
+        },
+        didParseCell: (data: any) => {
+          if (data.row.index > 0 && data.column.index > 0) {
+            const cellText = data.cell.text[0];
+            if (cellText && cellText.includes("\n")) {
+              const lines = cellText.split("\n");
+              if (lines[1]) {
+                const componentType = lines[1];
+                if (componentType === "Lec") {
+                  data.cell.styles.fillColor = [6, 182, 212, 0.35];
+                  data.cell.styles.textColor = [167, 243, 208];
+                  data.cell.styles.fontStyle = "bold";
+                  data.cell.styles.fontSize = 9;
+                  data.cell.styles.lineColor = [6, 182, 212, 0.5];
+                  data.cell.styles.lineWidth = 0.4;
+                } else if (componentType === "Sec") {
+                  data.cell.styles.fillColor = [59, 130, 246, 0.35];
+                  data.cell.styles.textColor = [147, 197, 253];
+                  data.cell.styles.fontStyle = "bold";
+                  data.cell.styles.fontSize = 9;
+                  data.cell.styles.lineColor = [59, 130, 246, 0.5];
+                  data.cell.styles.lineWidth = 0.4;
+                } else if (componentType === "Lab") {
+                  data.cell.styles.fillColor = [168, 85, 247, 0.35];
+                  data.cell.styles.textColor = [196, 181, 253];
+                  data.cell.styles.fontStyle = "bold";
+                  data.cell.styles.fontSize = 9;
+                  data.cell.styles.lineColor = [168, 85, 247, 0.5];
+                  data.cell.styles.lineWidth = 0.4;
+                }
+              }
+            }
+          }
+        },
+      });
+
+      let finalY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 10 : 100;
+
+      doc.setDrawColor(167, 243, 208, 0.4);
+      doc.setLineWidth(0.5);
+      doc.line(10, finalY - 2, pageWidth - 10, finalY - 2);
+
+      const estimatedCoursesHeight = 20 + (schedule.courses.length * 12);
+      if (finalY + estimatedCoursesHeight > pageHeight - 20) {
+        doc.addPage();
+        for (let i = 0; i < gradientSteps; i++) {
+          const color = [
+            Math.floor(3 + (i / gradientSteps) * 10),
+            Math.floor(7 + (i / gradientSteps) * 15),
+            Math.floor(18 + (i / gradientSteps) * 25)
+          ];
+          doc.setFillColor(color[0], color[1], color[2]);
+          doc.rect(0, (i / gradientSteps) * pageHeight, pageWidth, pageHeight / gradientSteps, "F");
+        }
+        finalY = 20;
+      }
+
+      const coursesSectionHeight = Math.min(20 + (schedule.courses.length * 12), pageHeight - finalY - 10);
+
+      doc.setFillColor(30, 41, 59);
+      doc.rect(8, finalY - 4, pageWidth - 16, coursesSectionHeight + 6, "F");
+
+      doc.setFillColor(51, 65, 85);
+      doc.rect(10, finalY - 2, pageWidth - 20, coursesSectionHeight + 2, "F");
+
+      doc.setDrawColor(167, 243, 208);
+      doc.setLineWidth(0.5);
+      doc.rect(10, finalY - 2, pageWidth - 20, coursesSectionHeight + 2, "D");
+
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(167, 243, 208);
+      doc.text("Courses in this schedule:", 14, finalY + 1);
+
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      let yPos = finalY + 8;
+
+      const sortedCourses = [...schedule.courses].sort((a, b) =>
+        a.course.code.localeCompare(b.course.code)
+      );
+
+      sortedCourses.forEach((courseData, idx) => {
+        if (yPos > pageHeight - 25) {
+          doc.addPage();
+          for (let i = 0; i < gradientSteps; i++) {
+            const color = [
+              Math.floor(3 + (i / gradientSteps) * 10),
+              Math.floor(7 + (i / gradientSteps) * 15),
+              Math.floor(18 + (i / gradientSteps) * 25)
+            ];
+            doc.setFillColor(color[0], color[1], color[2]);
+            doc.rect(0, (i / gradientSteps) * pageHeight, pageWidth, pageHeight / gradientSteps, "F");
+          }
+
+          const remainingCourses = sortedCourses.length - idx;
+          const remainingHeight = Math.min(20 + (remainingCourses * 12), pageHeight - 20);
+          doc.setFillColor(51, 65, 85);
+          doc.rect(10, 15, pageWidth - 20, remainingHeight, "F");
+          doc.setDrawColor(167, 243, 208);
+          doc.setLineWidth(0.5);
+          doc.rect(10, 15, pageWidth - 20, remainingHeight, "D");
+
+          doc.setFontSize(16);
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(167, 243, 208);
+          doc.text("Courses (continued):", 14, 22);
+
+          doc.setFontSize(10);
+          doc.setFont("helvetica", "normal");
+          yPos = 28;
+        }
+
+        const cardHeight = 10;
+        const cardX = 14;
+        const cardWidth = pageWidth - 28;
+
+        doc.setFillColor(30, 41, 59);
+        doc.rect(cardX, yPos - 3, cardWidth, cardHeight, "F");
+
+        doc.setDrawColor(167, 243, 208);
+        doc.setLineWidth(0.3);
+        doc.rect(cardX, yPos - 3, cardWidth, cardHeight, "D");
+
+        const accentColor = [
+          [6, 182, 212],
+          [59, 130, 246],
+          [168, 85, 247]
+        ][idx % 3];
+        doc.setFillColor(accentColor[0], accentColor[1], accentColor[2]);
+        doc.rect(cardX, yPos - 3, 2, cardHeight, "F");
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10.5);
+        const courseText = `${courseData.course.code} - ${courseData.course.name}`;
+        const maxWidth = cardWidth - 8;
+        const lines = doc.splitTextToSize(courseText, maxWidth);
+        doc.text(lines, cardX + 5, yPos + 1);
+        yPos += lines.length * 4.5;
+
+        doc.setFillColor(accentColor[0], accentColor[1], accentColor[2]);
+        doc.rect(cardX + 5, yPos - 1, 35, 4.5, "F");
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.setTextColor(167, 243, 208);
+        doc.text("Class:", cardX + 7, yPos + 1.5);
+
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(255, 255, 255);
+        doc.text(courseData.class.class_code, cardX + 18, yPos + 1.5);
+
+        yPos += 7;
+      });
+
+      const fileName = `Timetable_Term${termNum}_Schedule${scheduleIndex + 1}_${new Date().toISOString().split("T")[0]}.pdf`;
+      doc.save(fileName);
+    } catch (error: any) {
+      console.error("Error generating PDF:", error);
+      alert("Failed to generate PDF: " + error.message);
+    }
+  };
+
+  const getSlotColor = (componentType: string) => {
+    switch (componentType) {
+      case "L":
+        // Lecture - Red
+        return "bg-gradient-to-br from-red-500/20 to-red-600/20 border-red-500/50";
+      case "S":
+        // Section - Blue (matching Other section)
+        return "bg-gradient-to-br from-blue-500/20 to-blue-600/20 border-blue-500/50";
+      case "LB":
+        // Lab - Purple (matching Other section)
+        return "bg-gradient-to-br from-purple-500/20 to-purple-600/20 border-purple-500/50";
+      default:
+        return "bg-gradient-to-br from-red-500/20 to-red-600/20 border-red-500/50";
+    }
+  };
+
+  const getCellContent = (schedule: Schedule, day: string, slot: number) => {
+    const session = schedule.sessions.find(
+      s => s.day === day && s.slot === slot
+    );
+
+    if (!session) return null;
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className={`text-xs p-2 ${getSlotColor(session.component_type)} rounded-lg backdrop-blur-sm border`}
+      >
+        <div className="font-semibold text-white mb-1 line-clamp-2">
+          {session.course.name} ({session.component_type})
+        </div>
+        {session.room && (
+          <div className="text-gray-300 text-xs flex items-center gap-1">
+            <MapPin className="w-3 h-3" />
+            {session.room}
+          </div>
+        )}
+        {session.instructor && (
+          <div className="text-gray-400 text-xs flex items-center gap-1 mt-1">
+            <User className="w-3 h-3" />
+            {session.instructor}
+          </div>
+        )}
+      </motion.div>
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="text-center"
+        >
+          <div className="w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-white text-xl">Generating schedules...</p>
+        </motion.div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen p-4 sm:p-6 lg:p-8">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6"
+        >
+          <button
+            onClick={() => router.push(`/student/timetable/${termToken}`)}
+            className="flex items-center gap-2 text-cyan-400 hover:text-cyan-300 mb-4 transition-colors group"
+          >
+            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
+            <span>Back to Preferences</span>
+          </button>
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-gradient-to-br from-cyan-500/30 to-blue-600/30 rounded-xl shadow-lg shadow-cyan-500/20">
+              <Calendar className="w-6 h-6 text-cyan-400" />
+            </div>
+            <div>
+              <h1 className="text-3xl sm:text-4xl font-bold mb-1">
+                Generated Schedules
+              </h1>
+              <p className="text-gray-400 text-sm">
+                Found <span className="text-cyan-400 font-bold">{schedules.length}</span> schedule{schedules.length !== 1 ? 's' : ''} matching your preferences
+              </p>
+            </div>
+          </div>
+        </motion.div>
+
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="mb-6 p-4 bg-red-500/20 border border-red-500 rounded-lg text-red-200"
+          >
+            {error}
+          </motion.div>
+        )}
+
+        {schedules.length === 0 && !loading && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="glass border border-white/10 rounded-xl p-12 text-center shadow-xl"
+          >
+            <div className="p-4 bg-gray-500/20 rounded-xl w-20 h-20 mx-auto mb-4 flex items-center justify-center">
+              <Calendar className="w-10 h-10 text-gray-400 opacity-50" />
+            </div>
+            <h3 className="text-xl font-bold text-white mb-2">No Schedules Found</h3>
+            <p className="text-gray-400 mb-2">
+              No schedules found matching your preferences.
+            </p>
+            <p className="text-gray-500 text-sm">
+              Try adjusting your excluded days or elective courses.
+            </p>
+            <button
+              onClick={() => router.push(`/student/timetable/${termToken}`)}
+              className="mt-6 px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-semibold hover:scale-105 transition-all"
+            >
+              Go Back to Preferences
+            </button>
+          </motion.div>
+        )}
+
+        {/* Pagination */}
+        {schedules.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="glass border border-white/10 rounded-xl p-5 mb-6"
+          >
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="text-white">
+                <span className="font-bold">
+                  Showing {((currentPage - 1) * schedulesPerPage) + 1} - {Math.min(currentPage * schedulesPerPage, schedules.length)}
+                </span>
+                <span className="text-gray-400"> of {schedules.length} schedules</span>
+                <span className="text-gray-500 text-sm ml-2">(Sorted by quality: best first)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="px-4 py-2 glass border border-white/10 rounded-lg text-white hover:border-cyan-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-sm"
+                >
+                  Previous
+                </button>
+                <span className="px-4 py-2 text-white font-bold min-w-[100px] text-center bg-white/5 rounded-lg text-sm">
+                  Page {currentPage} of {Math.ceil(schedules.length / schedulesPerPage)}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(Math.ceil(schedules.length / schedulesPerPage), prev + 1))}
+                  disabled={currentPage >= Math.ceil(schedules.length / schedulesPerPage)}
+                  className="px-4 py-2 glass border border-white/10 rounded-lg text-white hover:border-cyan-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-sm"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Schedules */}
+        {schedules
+          .slice((currentPage - 1) * schedulesPerPage, currentPage * schedulesPerPage)
+          .map((schedule, index) => {
+            const globalIndex = (currentPage - 1) * schedulesPerPage + index;
+            return (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.1 }}
+                className="glass border border-white/10 rounded-xl p-6 overflow-hidden mb-6"
+              >
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-4">
+                    <div className="p-2 bg-cyan-500/20 rounded-lg">
+                      <Clock className="w-6 h-6 text-cyan-400" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-2">
+                        Schedule Option {globalIndex + 1}
+                        {globalIndex === 0 && (
+                          <span className="text-sm text-cyan-400 font-normal">⭐ Best</span>
+                        )}
+                        {schedule.excludedDaysUsed === 0 && schedule.totalDays <= 3 && schedule.gaps <= 2 && (
+                          <span className="text-sm text-green-400 font-normal">✨ Excellent</span>
+                        )}
+                      </h2>
+                      <div className="flex gap-4 text-sm text-gray-400">
+                        <div className="flex items-center gap-1">
+                          <Calendar className="w-4 h-4" />
+                          {schedule.totalDays} day(s) per week
+                        </div>
+                        {schedule.excludedDaysUsed > 0 && (
+                          <div className="flex items-center gap-1 text-yellow-400">
+                            <X className="w-4 h-4" />
+                            {schedule.excludedDaysUsed} excluded day(s) used
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1">
+                          <Clock className="w-4 h-4" />
+                          {schedule.gaps} gap(s)
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleDownloadPDF(schedule, globalIndex)}
+                    className="px-4 py-2 glass border border-white/10 rounded-lg text-white hover:border-cyan-500/50 transition-all flex items-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    Download PDF
+                  </button>
+                </div>
+
+                {/* Timetable Grid */}
+                <div className="overflow-x-auto mb-6">
+                  <table className="w-full">
+                    <thead>
+                      <tr>
+                        <th className="p-4 text-left text-white font-semibold">Day / Slot</th>
+                        {SLOTS.map((slot) => (
+                          <th key={slot} className="p-4 text-center text-white font-semibold">
+                            {slot}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {DAYS.map((day, dayIndex) => (
+                        <motion.tr
+                          key={day}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ delay: (index * 0.1) + (dayIndex * 0.02) }}
+                          className={`border-t border-white/10 ${
+                            excludedDays.includes(day) ? "bg-red-500/10" : ""
+                          }`}
+                        >
+                          <td className={`p-4 text-white font-semibold ${
+                            excludedDays.includes(day) ? "text-red-400" : ""
+                          }`}>
+                            {day}
+                          </td>
+                          {SLOTS.map((slot) => {
+                            const cellContent = getCellContent(schedule, day, slot);
+                            return (
+                              <td
+                                key={slot}
+                                className="p-2 min-w-[200px] h-24 border border-white/10"
+                              >
+                                {cellContent || (
+                                  <div className="text-gray-600 text-xs text-center pt-4">-</div>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </motion.tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Courses & Classes Registration */}
+                {schedule.courses && schedule.courses.length > 0 && (
+                  <div className="mt-6 pt-6 border-t border-white/10">
+                    <h4 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
+                      <BookOpen className="w-4 h-4 text-cyan-400" />
+                      Courses & Classes Registration
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {schedule.courses.map((courseData: any, idx: number) => (
+                        <motion.div
+                          key={idx}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: (index * 0.1) + (idx * 0.05) }}
+                          className="p-4 bg-white/5 border border-white/10 rounded-lg hover:border-cyan-500/50 transition-all"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1">
+                              <div className="text-white font-semibold text-sm mb-1">
+                                {courseData.course.code}
+                              </div>
+                              <div className="text-gray-300 text-xs mb-2">
+                                {courseData.course.name}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-gray-400 text-xs">Class:</span>
+                                <span className="px-2 py-1 bg-cyan-500/20 border border-cyan-500/50 rounded text-cyan-300 text-xs font-semibold">
+                                  {courseData.class.class_code}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="p-2 bg-cyan-500/20 rounded-lg">
+                              <Users className="w-4 h-4 text-cyan-400" />
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            );
+          })}
+
+      {/* Alert Modal */}
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
+        type={alertModal.type}
+        title={alertModal.title}
+        message={alertModal.message}
+      />
+    </div>
+  );
+}

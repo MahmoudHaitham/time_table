@@ -184,7 +184,7 @@ export default function Contact() {
                 <div className="flex gap-4">
                   {[
                     { icon: Github, href: "https://github.com/MahmoudHaitham", label: "GitHub", color: "from-gray-700 to-gray-900" },
-                    { icon: Linkedin, href: "https://linkedin.com/in/mahmoud-haisam", label: "LinkedIn", color: "from-blue-500 to-blue-700" },
+                    { icon: Linkedin, href: "https://www.linkedin.com/in/mahmoud-haisam-756891287", label: "LinkedIn", color: "from-blue-500 to-blue-700" },
                     { icon: Mail, href: "mailto:mahmoudhaisam15@gmail.com", label: "Email", color: "from-cyan-500 to-cyan-700" },
                   ].map((social, i) => (
                     <motion.a
@@ -278,7 +278,6 @@ export default function Contact() {
                       onChange={handleChange}
                       required
                       className="w-full px-5 py-4 rounded-xl bg-gray-800/50 backdrop-blur-sm border-2 border-gray-700 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent transition-all text-white placeholder:text-gray-500"
-                      placeholder="John Doe"
                     />
                   </motion.div>
 
@@ -299,7 +298,6 @@ export default function Contact() {
                       onChange={handleChange}
                       required
                       className="w-full px-5 py-4 rounded-xl bg-gray-800/50 backdrop-blur-sm border-2 border-gray-700 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent transition-all text-white placeholder:text-gray-500"
-                      placeholder="john@example.com"
                     />
                   </motion.div>
 
@@ -320,7 +318,6 @@ export default function Contact() {
                       required
                       rows={6}
                       className="w-full px-5 py-4 rounded-xl bg-gray-800/50 backdrop-blur-sm border-2 border-gray-700 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent transition-all resize-none text-white placeholder:text-gray-500"
-                      placeholder="Tell me about your project or idea..."
                     />
                   </motion.div>
 
@@ -424,7 +421,7 @@ export default function Contact() {
           >
             {[
               { icon: Github, href: "https://github.com/MahmoudHaitham", label: "GitHub", gradient: "from-gray-700 to-gray-900" },
-              { icon: Linkedin, href: "https://linkedin.com/in/mahmoud-haisam", label: "LinkedIn", gradient: "from-blue-500 to-blue-700" },
+              { icon: Linkedin, href: "https://www.linkedin.com/in/mahmoud-haisam-756891287", label: "LinkedIn", gradient: "from-blue-500 to-blue-700" },
               { icon: Mail, href: "mailto:mahmoudhaisam15@gmail.com", label: "Email", gradient: "from-cyan-500 to-cyan-700" },
             ].map((social, i) => (
               <motion.a

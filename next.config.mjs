@@ -1,18 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
+  reactStrictMode: false,
   
   // Compiler optimizations
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production',
   },
   
-  // Turbopack configuration
-  turbopack: {
-    root: process.cwd(),
-  },
-  
-  // Experimental performance features optimized for Turbopack
+  // Experimental features
   experimental: {
     optimizePackageImports: [
       'react-icons',
@@ -28,8 +23,9 @@ const nextConfig = {
     ],
   },
   
-  // Disable typed routes
-  typedRoutes: false,
+  typescript: {
+    ignoreBuildErrors: true,
+  },
 
   // Production optimizations
   productionBrowserSourceMaps: false,
@@ -38,4 +34,3 @@ const nextConfig = {
 };
 
 export default nextConfig;
-

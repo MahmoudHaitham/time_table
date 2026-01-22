@@ -137,7 +137,7 @@ export default function Hero() {
             className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6"
           >
             {[
-              { value: "3.72", label: "GPA", sublabel: "Excellent with Honor" },
+              { value: "3.71", label: "GPA", sublabel: "Excellent with Honor" },
               { value: "18+", label: "Projects", sublabel: "Delivered" },
               { value: "42", label: "Technologies", sublabel: "Mastered" },
               { value: "5+", label: "Years", sublabel: "Experience" },
@@ -174,7 +174,7 @@ export default function Hero() {
               },
               { 
                 icon: Linkedin, 
-                href: "https://linkedin.com/in/mahmoud-haisam", 
+                href: "https://www.linkedin.com/in/mahmoud-haisam-756891287", 
                 label: "LinkedIn",
                 color: "from-blue-400 to-blue-600",
                 glow: "rgba(59, 130, 246, 0.5)"
