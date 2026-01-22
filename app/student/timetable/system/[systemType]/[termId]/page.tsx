@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { studentTimetableAPI } from "@/lib/api/timetable";
-import { Calendar, BookOpen, X, CheckCircle2, Trash2, ArrowLeft } from "lucide-react";
+import { Calendar, BookOpen, X, CheckCircle2, Trash2, ArrowLeft, User } from "lucide-react";
 
 interface Course {
   id: number;
@@ -31,12 +31,15 @@ export default function SystemPreferencesPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [maxElectives, setMaxElectives] = useState<number>(2); // Default to 2, will be updated from API
+  const [instructors, setInstructors] = useState<string[]>([]);
+  const [selectedInstructors, setSelectedInstructors] = useState<string[]>([]);
 
   useEffect(() => {
     if (termToken && systemType) {
       loadCourses();
     }
   }, [termToken, systemType]);
+
 
   const loadCourses = async () => {
     if (!termToken || !systemType) return;
@@ -56,6 +59,7 @@ export default function SystemPreferencesPage() {
       setSelectedElectives([]);
       setExcludedCoreCourses([]);
       setExcludedDays([]);
+      setSelectedInstructors([]);
 
       // Store term number and token if available
       if (timetableRes.data?.term?.term_number) {
@@ -68,6 +72,45 @@ export default function SystemPreferencesPage() {
       setLoading(false);
     }
   };
+
+  // Load instructors when courses are loaded or selections change
+  useEffect(() => {
+    if (!termToken || !systemType || coreCourses.length === 0) return;
+    
+    const loadInstructorsAsync = async () => {
+      try {
+        const selectedCoreCourseIds = coreCourses
+          .filter(course => !excludedCoreCourses.includes(course.id))
+          .map(course => course.id);
+        
+        const selectedCourseIds = [...selectedCoreCourseIds, ...selectedElectives];
+        console.log("Loading instructors for selected courses:", selectedCourseIds);
+        
+        const instructorsRes = await studentTimetableAPI.getInstructorsForTerm(
+          termToken, 
+          systemType, 
+          selectedCourseIds.length > 0 ? selectedCourseIds : undefined
+        ).catch((err) => {
+          console.error("Error loading instructors:", err);
+          return { data: [] };
+        });
+        
+        const instructorsData = instructorsRes?.data || [];
+        setInstructors(instructorsData);
+        console.log("Loaded instructors:", instructorsData.length, instructorsData);
+        
+        // Remove selected instructors that are no longer in the list
+        setSelectedInstructors(prev => 
+          prev.filter(name => instructorsData.includes(name))
+        );
+      } catch (err: any) {
+        console.error("Error loading instructors:", err);
+        setInstructors([]);
+      }
+    };
+    
+    loadInstructorsAsync();
+  }, [coreCourses, selectedElectives, excludedCoreCourses, termToken, systemType]);
 
   const handleGenerateSchedules = async () => {
     if (!termToken || !systemType) return;
@@ -82,6 +125,7 @@ export default function SystemPreferencesPage() {
       excludedDays,
       electiveCourseIds: selectedElectives.length > 0 ? selectedElectives : undefined,
       excludedCoreCourseIds: excludedCoreCourses.length > 0 ? excludedCoreCourses : undefined,
+      preferredInstructors: selectedInstructors.length > 0 ? selectedInstructors : undefined,
       systemType,
     }));
 
@@ -109,6 +153,15 @@ export default function SystemPreferencesPage() {
       setExcludedCoreCourses(excludedCoreCourses.filter(id => id !== courseId));
     } else {
       setExcludedCoreCourses([...excludedCoreCourses, courseId]);
+    }
+    // Instructors will be reloaded automatically via useEffect
+  };
+
+  const toggleInstructor = (instructorName: string) => {
+    if (selectedInstructors.includes(instructorName)) {
+      setSelectedInstructors(selectedInstructors.filter(name => name !== instructorName));
+    } else {
+      setSelectedInstructors([...selectedInstructors, instructorName]);
     }
   };
 
@@ -358,6 +411,88 @@ export default function SystemPreferencesPage() {
               </div>
             )}
           </motion.div>
+
+          {/* Preferred Instructors Selection */}
+          {instructors.length > 0 ? (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+              className="glass border border-white/10 rounded-2xl p-10 sm:p-12 shadow-xl"
+            >
+              <div className="flex items-center gap-4 mb-8">
+                <div className="p-4 bg-gradient-to-br from-green-500/30 to-emerald-600/30 rounded-xl shadow-lg shadow-green-500/20">
+                  <User className="w-7 h-7 text-green-400" />
+                </div>
+                <div>
+                  <h2 className="text-3xl font-bold text-white mb-2">
+                    Preferred Instructors (Optional)
+                  </h2>
+                  <p className="text-gray-400">
+                    Select instructors you prefer. Schedules with more preferred instructors will rank higher.
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {instructors.map((instructor, idx) => (
+                  <motion.button
+                    key={instructor}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.45 + idx * 0.02 }}
+                    onClick={() => toggleInstructor(instructor)}
+                    className={`p-4 glass border rounded-xl transition-all text-left ${
+                      selectedInstructors.includes(instructor)
+                        ? "border-green-500 bg-gradient-to-br from-green-500/30 to-emerald-600/30 shadow-xl shadow-green-500/30 scale-105"
+                        : "border-white/10 hover:border-green-500/50 hover:bg-white/5 hover:scale-105"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className={`font-semibold text-base ${selectedInstructors.includes(instructor) ? "text-green-100" : "text-white"}`}>
+                          {instructor}
+                        </div>
+                      </div>
+                      {selectedInstructors.includes(instructor) && (
+                        <CheckCircle2 className="w-5 h-5 text-green-300 flex-shrink-0 ml-3" />
+                      )}
+                    </div>
+                  </motion.button>
+                ))}
+              </div>
+              {selectedInstructors.length > 0 && (
+                <div className="mt-8 pt-6 border-t border-white/10">
+                  <p className="text-base text-gray-400">
+                    Selected: <span className="text-green-400 font-bold text-lg">{selectedInstructors.length}</span> instructor{selectedInstructors.length > 1 ? 's' : ''}
+                  </p>
+                  <p className="text-sm text-green-300 mt-2">
+                    ✓ Schedules with these instructors will be prioritized
+                  </p>
+                </div>
+              )}
+            </motion.div>
+          ) : (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+              className="glass border border-white/10 rounded-2xl p-10 sm:p-12 shadow-xl"
+            >
+              <div className="flex items-center gap-4 mb-4">
+                <div className="p-4 bg-gradient-to-br from-gray-500/30 to-gray-600/30 rounded-xl shadow-lg shadow-gray-500/20">
+                  <User className="w-7 h-7 text-gray-400" />
+                </div>
+                <div>
+                  <h2 className="text-3xl font-bold text-white mb-2">
+                    Preferred Instructors (Optional)
+                  </h2>
+                  <p className="text-gray-400">
+                    No instructors found for courses in this term/system. Instructors will appear here once they are assigned to course sessions.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
 
           {/* Action Buttons */}
           <motion.div

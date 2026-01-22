@@ -245,12 +245,27 @@ export const studentTimetableAPI = {
     const url = `/timetable/terms/${termToken}/elective-courses?systemType=${systemType}`;
     return fetchAPI(url);
   },
+  getInstructorsForTerm: (termToken: string, systemType: number, selectedCourseIds?: number[]) => {
+    let url = `/timetable/terms/${termToken}/instructors?systemType=${systemType}`;
+    if (selectedCourseIds && selectedCourseIds.length > 0) {
+      url += `&selectedCourseIds=${selectedCourseIds.join(',')}`;
+    }
+    return fetchAPI(url);
+  },
+  getInstructorsForCourses: (systemType: number, courseIds: number[]) => {
+    let url = `/timetable/instructors/courses?systemType=${systemType}`;
+    if (courseIds && courseIds.length > 0) {
+      url += `&courseIds=${courseIds.join(',')}`;
+    }
+    return fetchAPI(url);
+  },
   generateSchedules: (data: {
     termId: string | number; // Accepts token (string) or ID (number) for backward compatibility
     excludedDays: string[];
     electiveCourseIds?: number[];
     excludedCoreCourseIds?: number[];
     systemType: number; // Required: 140, 160, or 180
+    preferredInstructors?: string[]; // Optional: array of preferred instructor names
   }) => fetchAPI("/timetable/generate", {
     method: "POST",
     body: JSON.stringify(data),
@@ -263,6 +278,7 @@ export const studentTimetableAPI = {
   generateOtherSectionSchedules: (data: {
     selectedCourseIds: number[];
     excludedDays: string[];
+    preferredInstructors?: string[]; // Optional: array of preferred instructor names
     systemType: number; // Required: 140, 160, or 180
   }) => fetchAPI("/timetable/other/generate", {
     method: "POST",

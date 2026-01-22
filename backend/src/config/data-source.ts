@@ -48,30 +48,30 @@ export const AppDataSource = new DataSource({
     ScheduleCache,
   ],
   extra: {
-    // Connection pool settings - optimized for 100-300 concurrent users
-    max: 100, // Increased significantly for high concurrency
-    min: 10, // Keep more connections ready
-    idleTimeoutMillis: 300000, // 5 minutes - keep idle connections longer
-    connectionTimeoutMillis: 60000, // 60 second timeout for initial connection
-    acquireTimeoutMillis: 60000, // Wait up to 60 seconds to acquire connection from pool
-    // PostgreSQL-specific optimizations
-    statement_timeout: 60000, // 60 second query timeout
-    query_timeout: 60000,
-    // Connection pool optimization
-    poolSize: 100,
-    maxQueryExecutionTime: 60000,
-    // Retry connection on failure
-    retry: {
-      max: 3,
-      match: [
-        /ETIMEDOUT/,
-        /EHOSTUNREACH/,
-        /ECONNRESET/,
-        /ECONNREFUSED/,
-        /ETIMEDOUT/,
-        /timeout/i,
-      ],
-    },
+    // Connection pool settings - optimized for high concurrency (200-500+ concurrent users)
+    // IMPORTANT: Ensure your database provider supports 100+ connections
+    // - Neon Free tier: 100 connections max
+    // - Neon Pro tier: 500+ connections
+    // - Supabase Free: 60 connections max
+    // - Supabase Pro: 200+ connections
+    // - AWS RDS: Depends on instance type
+    max: 100, // Maximum connections in pool (supports high concurrent load)
+    min: 10, // Minimum idle connections to maintain (proportionally increased)
+    
+    // Timeout settings
+    idleTimeoutMillis: 30000, // 30 seconds - close idle connections faster to prevent stale connections
+    connectionTimeoutMillis: 10000, // 10 second timeout for initial connection
+    
+    // Connection keep-alive (critical for cloud databases that close idle connections)
+    // This sends TCP keep-alive packets to prevent connection termination
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000, // Start keep-alive after 10 seconds of inactivity
+    
+    // PostgreSQL-specific query timeout
+    statement_timeout: 30000, // 30 second query timeout
+    
+    // Allow pool to create connections on demand
+    allowExitOnIdle: false, // Keep pool alive even when idle
   },
 });
 

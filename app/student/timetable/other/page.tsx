@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { studentTimetableAPI } from "@/lib/api/timetable";
-import { Calendar, BookOpen, X, CheckCircle2, ArrowLeft } from "lucide-react";
+import { Calendar, BookOpen, X, CheckCircle2, ArrowLeft, User } from "lucide-react";
 
 interface Course {
   id: number;
@@ -30,18 +30,11 @@ export default function OtherSectionPage() {
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [maxElectives, setMaxElectives] = useState<number>(2); // Default to 2, will be updated from API
+  const [instructors, setInstructors] = useState<string[]>([]);
+  const [selectedInstructors, setSelectedInstructors] = useState<string[]>([]);
 
-  useEffect(() => {
-    // Check if systemType is stored in sessionStorage
-    const storedSystemType = sessionStorage.getItem("other_section_system_type");
-    if (storedSystemType) {
-      const parsed = parseInt(storedSystemType);
-      if ([140, 160, 180].includes(parsed)) {
-        setSystemType(parsed);
-        loadCourses(parsed);
-      }
-    }
-  }, []);
+  // Don't auto-load from sessionStorage - always start with system selection
+  // This ensures users always see system selection first when entering "Other" section
 
   const handleSystemSelect = (selectedSystem: number) => {
     setSystemType(selectedSystem);
@@ -55,31 +48,41 @@ export default function OtherSectionPage() {
       const response = await studentTimetableAPI.getAllCoursesForOther(system);
       const allCourses = response.data?.courses || { core: [], elective: [] };
       
-      // Remove duplicate courses by code (keep first occurrence)
+      // Deduplicate courses by course CODE (not ID) to avoid showing the same course multiple times
+      // If a course appears in multiple terms, we keep only the first occurrence
+      // The backend will handle finding the course across all terms when generating schedules
       const seenCoreCodes = new Set<string>();
       const seenElectiveCodes = new Set<string>();
       
-      const uniqueCore = allCourses.core.filter((course: Course) => {
+      const uniqueCore = (allCourses.core || []).filter((course: Course) => {
         if (seenCoreCodes.has(course.code)) {
-          return false;
+          return false; // Skip duplicate course code
         }
         seenCoreCodes.add(course.code);
-        return true;
+        return true; // Keep first occurrence
       });
       
-      const uniqueElective = allCourses.elective.filter((course: Course) => {
+      const uniqueElective = (allCourses.elective || []).filter((course: Course) => {
         if (seenElectiveCodes.has(course.code)) {
-          return false;
+          return false; // Skip duplicate course code
         }
         seenElectiveCodes.add(course.code);
-        return true;
+        return true; // Keep first occurrence
       });
       
-      setCourses({ core: uniqueCore, elective: uniqueElective });
+      console.log(`[OtherSection] Loaded ${uniqueCore.length} unique core courses and ${uniqueElective.length} unique elective courses for system ${system} (from ${allCourses.core?.length || 0} core and ${allCourses.elective?.length || 0} elective total)`);
+      
+      setCourses({ 
+        core: uniqueCore, 
+        elective: uniqueElective 
+      });
       setMaxElectives(response.data?.maxElectives || 2); // Get maxElectives from API response
       setSelectedCourses([]);
       setExcludedDays([]);
+      setInstructors([]);
+      setSelectedInstructors([]);
     } catch (err: any) {
+      console.error("[OtherSection] Error loading courses:", err);
       setError(err.message || "Failed to load courses");
     } finally {
       setLoading(false);
@@ -117,7 +120,53 @@ export default function OtherSectionPage() {
         setSelectedCourses([...selectedCourses, courseId]);
       }
     }
+    // Instructors will be reloaded automatically via useEffect
   };
+
+  const toggleInstructor = (instructorName: string) => {
+    if (selectedInstructors.includes(instructorName)) {
+      setSelectedInstructors(selectedInstructors.filter(name => name !== instructorName));
+    } else {
+      setSelectedInstructors([...selectedInstructors, instructorName]);
+    }
+  };
+
+  // Load instructors when courses are selected
+  useEffect(() => {
+    if (!systemType || selectedCourses.length === 0) {
+      setInstructors([]);
+      setSelectedInstructors([]);
+      return;
+    }
+
+    const loadInstructorsAsync = async () => {
+      try {
+        console.log("Loading instructors for selected courses:", selectedCourses);
+        
+        const instructorsRes = await studentTimetableAPI.getInstructorsForCourses(
+          systemType,
+          selectedCourses
+        ).catch((err) => {
+          console.error("Error loading instructors:", err);
+          return { data: [] };
+        });
+        
+        const instructorsData = instructorsRes?.data || [];
+        setInstructors(instructorsData);
+        console.log("Loaded instructors:", instructorsData.length, instructorsData);
+        
+        // Remove selected instructors that are no longer in the list
+        setSelectedInstructors(prev => 
+          prev.filter(name => instructorsData.includes(name))
+        );
+      } catch (err: any) {
+        console.error("Error loading instructors:", err);
+        setInstructors([]);
+      }
+    };
+    
+    loadInstructorsAsync();
+  }, [selectedCourses, systemType]);
 
   const toggleDay = (day: string) => {
     if (excludedDays.includes(day)) {
@@ -159,6 +208,7 @@ export default function OtherSectionPage() {
       const response = await studentTimetableAPI.generateOtherSectionSchedules({
         selectedCourseIds: selectedCourses,
         excludedDays,
+        preferredInstructors: selectedInstructors.length > 0 ? selectedInstructors : undefined,
         systemType,
       });
 
@@ -273,7 +323,17 @@ export default function OtherSectionPage() {
         >
           <div className="flex items-center gap-6">
             <button
-              onClick={() => router.push("/student/timetable")}
+              onClick={() => {
+                if (systemType) {
+                  setSystemType(null);
+                  sessionStorage.removeItem("other_section_system_type");
+                  setCourses({ core: [], elective: [] });
+                  setSelectedCourses([]);
+                  setExcludedDays([]);
+                } else {
+                  router.push("/student/timetable");
+                }
+              }}
               className="p-3 glass border border-white/10 rounded-xl hover:border-purple-500/50 hover:bg-white/5 transition-all"
             >
               <ArrowLeft className="w-6 h-6 text-white" />
@@ -426,11 +486,93 @@ export default function OtherSectionPage() {
             </motion.div>
           )}
 
+          {/* Preferred Instructors Selection */}
+          {instructors.length > 0 ? (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="glass border border-white/10 rounded-2xl p-10 sm:p-12 shadow-xl"
+            >
+              <div className="flex items-center gap-4 mb-8">
+                <div className="p-4 bg-gradient-to-br from-green-500/30 to-emerald-600/30 rounded-xl shadow-lg shadow-green-500/20">
+                  <User className="w-7 h-7 text-green-400" />
+                </div>
+                <div>
+                  <h2 className="text-3xl font-bold text-white mb-2">
+                    Preferred Instructors (Optional)
+                  </h2>
+                  <p className="text-gray-400">
+                    Select instructors you prefer. Schedules with more preferred instructors will rank higher.
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {instructors.map((instructor, idx) => (
+                  <motion.button
+                    key={instructor}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.35 + idx * 0.02 }}
+                    onClick={() => toggleInstructor(instructor)}
+                    className={`p-4 glass border rounded-xl transition-all text-left ${
+                      selectedInstructors.includes(instructor)
+                        ? "border-green-500 bg-gradient-to-br from-green-500/30 to-emerald-600/30 shadow-xl shadow-green-500/30 scale-105"
+                        : "border-white/10 hover:border-green-500/50 hover:bg-white/5 hover:scale-105"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className={`font-semibold text-base ${selectedInstructors.includes(instructor) ? "text-green-100" : "text-white"}`}>
+                          {instructor}
+                        </div>
+                      </div>
+                      {selectedInstructors.includes(instructor) && (
+                        <CheckCircle2 className="w-5 h-5 text-green-300 flex-shrink-0 ml-3" />
+                      )}
+                    </div>
+                  </motion.button>
+                ))}
+              </div>
+              {selectedInstructors.length > 0 && (
+                <div className="mt-8 pt-6 border-t border-white/10">
+                  <p className="text-base text-gray-400">
+                    Selected: <span className="text-green-400 font-bold text-lg">{selectedInstructors.length}</span> instructor{selectedInstructors.length > 1 ? 's' : ''}
+                  </p>
+                  <p className="text-sm text-green-300 mt-2">
+                    ✓ Schedules with these instructors will be prioritized
+                  </p>
+                </div>
+              )}
+            </motion.div>
+          ) : selectedCourses.length > 0 ? (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="glass border border-white/10 rounded-2xl p-10 sm:p-12 shadow-xl"
+            >
+              <div className="flex items-center gap-4 mb-4">
+                <div className="p-4 bg-gradient-to-br from-gray-500/30 to-gray-600/30 rounded-xl shadow-lg shadow-gray-500/20">
+                  <User className="w-7 h-7 text-gray-400" />
+                </div>
+                <div>
+                  <h2 className="text-3xl font-bold text-white mb-2">
+                    Preferred Instructors (Optional)
+                  </h2>
+                  <p className="text-gray-400">
+                    No instructors found for selected courses. Instructors will appear here once they are assigned to course sessions.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          ) : null}
+
           {/* Excluded Days Selection */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
+            transition={{ delay: 0.4 }}
             className="glass border border-white/10 rounded-2xl p-10 sm:p-12 shadow-xl"
           >
             <div className="flex items-center gap-4 mb-8">
@@ -486,14 +628,10 @@ export default function OtherSectionPage() {
             className="flex flex-col sm:flex-row gap-5 pt-6"
           >
             <button
-              onClick={() => {
-                setSystemType(null);
-                sessionStorage.removeItem("other_section_system_type");
-                router.push("/student/timetable");
-              }}
+              onClick={() => router.push("/student/timetable")}
               className="px-8 py-4 glass border border-white/10 rounded-xl font-semibold text-white hover:border-gray-500/50 hover:bg-white/5 transition-all order-2 sm:order-1 text-lg"
             >
-              Back
+              Back to Main
             </button>
             <button
               onClick={() => {
@@ -501,6 +639,8 @@ export default function OtherSectionPage() {
                 sessionStorage.removeItem("other_section_system_type");
                 setCourses({ core: [], elective: [] });
                 setSelectedCourses([]);
+                setExcludedDays([]);
+                setSelectedInstructors([]);
               }}
               className="px-8 py-4 glass border border-white/10 rounded-xl font-semibold text-white hover:border-purple-500/50 hover:bg-white/5 transition-all order-3 sm:order-2 text-lg"
             >

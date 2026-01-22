@@ -1,6 +1,6 @@
 /**
  * Simple in-memory cache for timetable data
- * Optimized for high concurrency (100-300 users)
+ * Optimized for high concurrency with database pool supporting 100 connections
  */
 
 interface CacheEntry<T> {

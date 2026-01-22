@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { studentTimetableAPI } from "@/lib/api/timetable";
-import { Calendar, CheckCircle2 } from "lucide-react";
+import { Calendar, CheckCircle2, BookOpen } from "lucide-react";
 
 interface Term {
   id?: number; // ID removed for security, use token instead
@@ -147,6 +147,34 @@ export default function StudentTimetablePage() {
           >
             <Calendar className="w-6 h-6" />
             View Electives
+          </button>
+        </motion.div>
+
+        {/* Student Manual */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          className="mt-10 glass border border-white/10 rounded-2xl p-10 sm:p-12 shadow-xl"
+        >
+          <div className="flex items-center gap-4 mb-8">
+            <div className="p-4 bg-gradient-to-br from-blue-500/30 to-indigo-600/30 rounded-xl shadow-lg shadow-blue-500/20">
+              <BookOpen className="w-7 h-7 text-blue-400" />
+            </div>
+            <div>
+              <h2 className="text-3xl font-bold text-white mb-2">Student Manual</h2>
+              <p className="text-gray-400">Complete guide to using the timetable system</p>
+            </div>
+          </div>
+          <p className="text-gray-300 mb-6">
+            New to the system? Read our comprehensive manual with step-by-step instructions, tips, and best practices for generating your perfect schedule.
+          </p>
+          <button
+            onClick={() => router.push("/student/manual")}
+            className="px-8 py-4 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl font-bold text-lg shadow-2xl shadow-blue-500/50 hover:shadow-blue-500/70 hover:scale-105 transition-all flex items-center justify-center gap-3"
+          >
+            <BookOpen className="w-6 h-6" />
+            Open Student Manual
           </button>
         </motion.div>
 

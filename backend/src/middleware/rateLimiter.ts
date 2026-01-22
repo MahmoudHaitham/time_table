@@ -1,6 +1,7 @@
 /**
  * Rate limiting middleware for API endpoints
- * Prevents abuse and ensures fair resource usage for 100-300 concurrent users
+ * Prevents abuse and ensures fair resource usage for high concurrent users
+ * Database pool supports up to 100 concurrent connections
  */
 
 import { Request, Response, NextFunction } from "express";

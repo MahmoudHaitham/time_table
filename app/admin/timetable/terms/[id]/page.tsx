@@ -182,7 +182,38 @@ export default function TermDetailsPage() {
       if (termRes && termRes.data) {
         console.log(`[loadTermData] Setting term and classes data`);
         setTerm(termRes.data);
-        setClasses(classesRes.data || []);
+        
+        // Sort classes: first by system_type (descending: 180, 160, 140, null), then by class_code numerically
+        const sortedClasses = (classesRes.data || []).sort((a: Class, b: Class) => {
+          // Sort by system_type first (descending: 180 > 160 > 140 > null)
+          if (a.system_type !== b.system_type) {
+            if (a.system_type === null) return 1;
+            if (b.system_type === null) return -1;
+            return b.system_type - a.system_type;
+          }
+          
+          // Then sort by class_code numerically (extract number after underscore)
+          const extractNumber = (code: string): number => {
+            const parts = code.split("_");
+            if (parts.length === 2) {
+              const num = parseInt(parts[1], 10);
+              return isNaN(num) ? 0 : num;
+            }
+            return 0;
+          };
+          
+          const numA = extractNumber(a.class_code);
+          const numB = extractNumber(b.class_code);
+          
+          if (numA !== numB) {
+            return numA - numB;
+          }
+          
+          // If numbers are equal, fall back to string comparison
+          return a.class_code.localeCompare(b.class_code);
+        });
+        
+        setClasses(sortedClasses);
       } else {
         console.error(`[loadTermData] Term data is invalid:`, { termRes });
         setError("Term data is invalid");

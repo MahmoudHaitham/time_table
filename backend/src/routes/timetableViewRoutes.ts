@@ -9,6 +9,8 @@ import {
   getAllElectiveSlots,
   generateTimetableSchedules,
   generateOtherSectionSchedules,
+  getInstructorsForTerm,
+  getInstructorsForCourses,
 } from "../controllers/timetableViewController";
 
 const router = Router();
@@ -24,6 +26,12 @@ router.get("/terms/:termId/core-courses", getCoreCourses);
 
 // GET /timetable/terms/:termId/elective-courses - Get elective courses for a term
 router.get("/terms/:termId/elective-courses", getElectiveCourses);
+
+// GET /timetable/terms/:termId/instructors - Get instructors for courses in a term
+router.get("/terms/:termId/instructors", getInstructorsForTerm);
+
+// GET /timetable/instructors/courses - Get instructors for specific course IDs (for "Other" section)
+router.get("/instructors/courses", getInstructorsForCourses);
 
 // GET /timetable/other/courses - Get all courses from all terms for "Other" section
 router.get("/other/courses", getAllCoursesForOther);

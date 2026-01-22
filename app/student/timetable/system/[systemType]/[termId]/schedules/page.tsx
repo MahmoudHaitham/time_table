@@ -87,6 +87,7 @@ export default function SystemSchedulesPage() {
         excludedDays: [],
         electiveCourseIds: undefined,
         excludedCoreCourseIds: undefined,
+        preferredInstructors: undefined,
         systemType,
       };
 
@@ -97,6 +98,7 @@ export default function SystemSchedulesPage() {
         excludedDays: preferences.excludedDays || [],
         electiveCourseIds: preferences.electiveCourseIds,
         excludedCoreCourseIds: preferences.excludedCoreCourseIds,
+        preferredInstructors: preferences.preferredInstructors,
         systemType,
       });
 

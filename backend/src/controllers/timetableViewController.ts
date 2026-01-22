@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { AppDataSource } from "../config/data-source";
-import { In, IsNull, Or } from "typeorm";
+import { ensureDbConnection } from "../utils/dbConnection";
+import { In, IsNull, Not, Or } from "typeorm";
 import { Term } from "../entities/Term";
 import { Class } from "../entities/Class";
 import { ClassCourse } from "../entities/ClassCourse";
@@ -22,9 +23,10 @@ import { encodeTermId, decodeTermToken } from "../utils/termToken";
  */
 export const getPublishedTerms = async (req: Request, res: Response) => {
   try {
-    // Check if database is initialized
-    if (!AppDataSource.isInitialized) {
-      console.error("[getPublishedTerms] Database not initialized");
+    // Ensure database connection is ready
+    const isReady = await ensureDbConnection();
+    if (!isReady) {
+      console.error("[getPublishedTerms] Database connection not available");
       return res.status(503).json({
         success: false,
         message: "Database connection not available. Please try again later.",
@@ -322,13 +324,11 @@ export const getTermTimetable = async (req: Request, res: Response) => {
       console.error("[getTermTimetable] Database connection error detected");
       
       // Try to reinitialize connection if it's closed
-      if (!AppDataSource.isInitialized) {
-        try {
-          await AppDataSource.initialize();
-          console.log("[getTermTimetable] Database connection reinitialized");
-        } catch (initError) {
-          console.error("[getTermTimetable] Failed to reinitialize connection:", initError);
-        }
+      const isReady = await ensureDbConnection();
+      if (!isReady) {
+        console.error("[getTermTimetable] Failed to reconnect to database");
+      } else {
+        console.log("[getTermTimetable] Database connection reinitialized");
       }
       
       return res.status(503).json({
@@ -831,6 +831,224 @@ export const getElectiveCourses = async (req: Request, res: Response) => {
 };
 
 /**
+ * Get instructors for courses in a term and system
+ * Returns unique instructor names from sessions for courses the student is taking
+ */
+export const getInstructorsForTerm = async (req: Request, res: Response) => {
+  try {
+    const { termId } = req.params;
+    const systemType = req.query.systemType ? parseInt(req.query.systemType as string) : null;
+    
+    // Get selected course IDs from query parameter (comma-separated)
+    // This includes core courses (all) + selected elective courses
+    const selectedCourseIdsParam = req.query.selectedCourseIds as string | undefined;
+    const selectedCourseIds: number[] = selectedCourseIdsParam
+      ? selectedCourseIdsParam.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id))
+      : [];
+    
+    // Decode term token to get actual term ID
+    const termIdStr = Array.isArray(termId) ? termId[0] : (termId as string);
+    const parsedTermId = decodeTermToken(termIdStr);
+    
+    if (!parsedTermId) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid term token",
+      });
+    }
+
+    if (!systemType || ![140, 160, 180].includes(systemType)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid systemType (140, 160, or 180) is required",
+      });
+    }
+
+    // Verify term exists and is published
+    const termRepo = AppDataSource.getRepository(Term);
+    const term = await termRepo.findOne({
+      where: { id: parsedTermId, is_published: true },
+    });
+
+    if (!term) {
+      return res.status(404).json({
+        success: false,
+        message: "Published term not found",
+      });
+    }
+
+    // Get all classes for this term and system
+    const classRepo = AppDataSource.getRepository(Class);
+    const classes = await classRepo.find({
+      where: { 
+        term_id: term.id,
+        system_type: systemType,
+      },
+    });
+
+    // Get all class courses for these classes
+    const classCourseRepo = AppDataSource.getRepository(ClassCourse);
+    const classIds = classes.map(c => c.id);
+    const classCourses = classIds.length > 0 ? await classCourseRepo.find({
+      where: { class_id: In(classIds) },
+      relations: ["course"],
+    }) : [];
+
+    // Filter class courses to only selected courses (if provided)
+    // If selectedCourseIds is empty, include all courses (core + all electives)
+    // If selectedCourseIds is provided, only include those courses
+    let filteredClassCourses = classCourses;
+    if (selectedCourseIds.length > 0) {
+      filteredClassCourses = classCourses.filter(cc => selectedCourseIds.includes(cc.course.id));
+      console.log(`[getInstructorsForTerm] Filtering instructors for ${selectedCourseIds.length} selected course(s): ${selectedCourseIds.join(", ")}`);
+    } else {
+      console.log(`[getInstructorsForTerm] No course filter - showing instructors for all courses`);
+    }
+
+    // Get all components for the filtered class courses
+    const componentRepo = AppDataSource.getRepository(CourseComponent);
+    const filteredClassCourseIds = filteredClassCourses.map(cc => cc.id);
+    const components = filteredClassCourseIds.length > 0 ? await componentRepo.find({
+      where: { class_course_id: In(filteredClassCourseIds) },
+    }) : [];
+
+    // Get all sessions with instructors for these components
+    const sessionRepo = AppDataSource.getRepository(Session);
+    const componentIds = components.map(c => c.id);
+    const sessions = componentIds.length > 0 ? await sessionRepo.find({
+      where: { 
+        component_id: In(componentIds),
+        instructor: Not(IsNull()),
+      },
+      select: ["instructor"],
+    }) : [];
+
+    // Extract unique instructor names
+    const instructorSet = new Set<string>();
+    sessions.forEach(session => {
+      if (session.instructor && session.instructor.trim()) {
+        instructorSet.add(session.instructor.trim());
+      }
+    });
+
+    const instructors = Array.from(instructorSet).sort();
+    
+    console.log(`[getInstructorsForTerm] Found ${instructors.length} instructor(s) for selected courses: ${instructors.join(", ")}`);
+
+    return res.json({
+      success: true,
+      data: instructors,
+    });
+  } catch (error: any) {
+    console.error("Error fetching instructors for term:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
+  }
+};
+
+/**
+ * Get instructors for specific course IDs (for "Other" section)
+ * Works across multiple terms - accepts course IDs directly
+ */
+export const getInstructorsForCourses = async (req: Request, res: Response) => {
+  try {
+    const systemType = req.query.systemType ? parseInt(req.query.systemType as string) : null;
+    
+    // Get course IDs from query parameter (comma-separated)
+    const courseIdsParam = req.query.courseIds as string | undefined;
+    const courseIds: number[] = courseIdsParam
+      ? courseIdsParam.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id))
+      : [];
+    
+    if (!systemType || ![140, 160, 180].includes(systemType)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid systemType (140, 160, or 180) is required",
+      });
+    }
+
+    if (courseIds.length === 0) {
+      return res.json({
+        success: true,
+        data: [],
+      });
+    }
+
+    console.log(`[getInstructorsForCourses] Getting instructors for ${courseIds.length} course(s): ${courseIds.join(", ")}`);
+
+    // Get all published terms
+    const termRepo = AppDataSource.getRepository(Term);
+    const terms = await termRepo.find({
+      where: { is_published: true },
+    });
+
+    // Get all classes for all terms with the specified system type
+    const classRepo = AppDataSource.getRepository(Class);
+    const termIds = terms.map(t => t.id);
+    const classes = termIds.length > 0 ? await classRepo.find({
+      where: { 
+        term_id: In(termIds),
+        system_type: systemType,
+      },
+    }) : [];
+
+    // Get all class courses for these classes, filtered by course IDs
+    const classCourseRepo = AppDataSource.getRepository(ClassCourse);
+    const classIds = classes.map(c => c.id);
+    const classCourses = classIds.length > 0 ? await classCourseRepo.find({
+      where: { 
+        class_id: In(classIds),
+        course: { id: In(courseIds) },
+      },
+      relations: ["course"],
+    }) : [];
+
+    // Get all components for these class courses
+    const componentRepo = AppDataSource.getRepository(CourseComponent);
+    const classCourseIds = classCourses.map(cc => cc.id);
+    const components = classCourseIds.length > 0 ? await componentRepo.find({
+      where: { class_course_id: In(classCourseIds) },
+    }) : [];
+
+    // Get all sessions with instructors for these components
+    const sessionRepo = AppDataSource.getRepository(Session);
+    const componentIds = components.map(c => c.id);
+    const sessions = componentIds.length > 0 ? await sessionRepo.find({
+      where: { 
+        component_id: In(componentIds),
+        instructor: Not(IsNull()),
+      },
+      select: ["instructor"],
+    }) : [];
+
+    // Extract unique instructor names
+    const instructorSet = new Set<string>();
+    sessions.forEach(session => {
+      if (session.instructor && session.instructor.trim()) {
+        instructorSet.add(session.instructor.trim());
+      }
+    });
+
+    const instructors = Array.from(instructorSet).sort();
+    
+    console.log(`[getInstructorsForCourses] Found ${instructors.length} instructor(s) for selected courses: ${instructors.join(", ")}`);
+
+    return res.json({
+      success: true,
+      data: instructors,
+    });
+  } catch (error: any) {
+    console.error("Error fetching instructors for courses:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
+  }
+};
+
+/**
  * Get all elective courses with sessions across all published terms for a system
  * Used for displaying all elective slots in a unified view
  */
@@ -1040,6 +1258,8 @@ export const getAllCoursesForOther = async (req: Request, res: Response) => {
       relations: ["term"],
     }) : [];
 
+    console.log(`[getAllCoursesForOther] Found ${allClasses.length} classes across ${terms.length} terms for system ${systemType}`);
+
     // Create a map of term_id to term_number for quick lookup
     const termMap = new Map<number, string>();
     terms.forEach(term => {
@@ -1053,6 +1273,8 @@ export const getAllCoursesForOther = async (req: Request, res: Response) => {
       where: { class_id: In(classIds) },
       relations: ["course", "class"],
     }) : [];
+
+    console.log(`[getAllCoursesForOther] Found ${allClassCourses.length} class-course assignments for system ${systemType}`);
 
     // Group courses by term and type (core/elective)
     // Create a map to store unique courses with their term information
@@ -1116,6 +1338,8 @@ export const getAllCoursesForOther = async (req: Request, res: Response) => {
     coreCourses.sort(sortCourses);
     electiveCourses.sort(sortCourses);
 
+    console.log(`[getAllCoursesForOther] Returning ${coreCourses.length} core courses and ${electiveCourses.length} elective courses for system ${systemType}`);
+
     // Calculate maximum electives across all terms (use the highest value)
     let maxElectivesAcrossTerms = 0;
     for (const term of terms) {
@@ -1160,7 +1384,7 @@ export const getAllCoursesForOther = async (req: Request, res: Response) => {
  */
 export const generateOtherSectionSchedules = async (req: Request, res: Response) => {
   try {
-    const { selectedCourseIds, excludedDays, systemType } = req.body;
+    const { selectedCourseIds, excludedDays, systemType, preferredInstructors } = req.body;
 
     if (!Array.isArray(selectedCourseIds) || selectedCourseIds.length === 0) {
       return res.status(400).json({
@@ -1174,6 +1398,25 @@ export const generateOtherSectionSchedules = async (req: Request, res: Response)
         success: false,
         message: "excludedDays must be an array",
       });
+    }
+
+    // Validate preferredInstructors (optional array of instructor names)
+    const preferredInstructorNames: string[] = [];
+    if (preferredInstructors) {
+      if (!Array.isArray(preferredInstructors)) {
+        return res.status(400).json({
+          success: false,
+          message: "preferredInstructors must be an array",
+        });
+      }
+      // Filter out empty strings and normalize
+      preferredInstructorNames.push(...preferredInstructors
+        .filter((name: any) => typeof name === "string" && name.trim())
+        .map((name: string) => name.trim()));
+      
+      console.log(`[generateOtherSectionSchedules] Received ${preferredInstructorNames.length} preferred instructor(s): ${preferredInstructorNames.join(", ")}`);
+    } else {
+      console.log(`[generateOtherSectionSchedules] No preferred instructors specified`);
     }
 
     if (!systemType || ![140, 160, 180].includes(systemType)) {
@@ -1306,10 +1549,12 @@ export const generateOtherSectionSchedules = async (req: Request, res: Response)
     const electiveCoursesData = coursesWithSessions.filter(cd => cd.course.is_elective);
 
     // Generate schedules
+    console.log(`[generateOtherSectionSchedules] Generating schedules with ${preferredInstructorNames.length} preferred instructor(s): ${preferredInstructorNames.join(", ")}`);
     const schedules = generateScheduleCombinations(
       coreCoursesData,
       electiveCoursesData,
-      excludedDays
+      excludedDays,
+      preferredInstructorNames
     );
 
     // Sort by score
@@ -1344,7 +1589,7 @@ export const generateOtherSectionSchedules = async (req: Request, res: Response)
  */
 export const generateTimetableSchedules = async (req: Request, res: Response) => {
   try {
-    const { termId, excludedDays, electiveCourseIds, excludedCoreCourseIds } = req.body;
+    const { termId, excludedDays, electiveCourseIds, excludedCoreCourseIds, preferredInstructors } = req.body;
 
     // Handle "Other" section - redirect to separate function
     if (!termId || termId === "other" || termId === "null") {
@@ -1394,6 +1639,25 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
         success: false,
         message: "electiveCourseIds must be an array",
       });
+    }
+
+    // Validate preferredInstructors (optional array of instructor names)
+    const preferredInstructorNames: string[] = [];
+    if (preferredInstructors) {
+      if (!Array.isArray(preferredInstructors)) {
+        return res.status(400).json({
+          success: false,
+          message: "preferredInstructors must be an array",
+        });
+      }
+      // Filter out empty strings and normalize
+      preferredInstructorNames.push(...preferredInstructors
+        .filter((name: any) => typeof name === "string" && name.trim())
+        .map((name: string) => name.trim()));
+      
+      console.log(`[generateTimetableSchedules] Received ${preferredInstructorNames.length} preferred instructor(s): ${preferredInstructorNames.join(", ")}`);
+    } else {
+      console.log(`[generateTimetableSchedules] No preferred instructors specified`);
     }
 
     // Validate systemType is provided
@@ -1478,13 +1742,11 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
             await new Promise(resolve => setTimeout(resolve, waitTime));
             
             // Try to reinitialize connection if it's lost
-            if (!AppDataSource.isInitialized) {
-              try {
-                await AppDataSource.initialize();
-                console.log(`[generateTimetableSchedules] Reinitialized database connection`);
-              } catch (initError) {
-                console.error(`[generateTimetableSchedules] Failed to reinitialize connection:`, initError);
-              }
+            const isReady = await ensureDbConnection();
+            if (!isReady) {
+              console.error(`[generateTimetableSchedules] Failed to reconnect to database`);
+            } else {
+              console.log(`[generateTimetableSchedules] Reinitialized database connection`);
             }
             continue;
           }
@@ -1716,10 +1978,12 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
     console.log(`  - Classes missing sessions: ${Array.from(classesWithCourses).filter(c => !classesInUse.has(c)).sort().join(", ") || "None"}`);
 
     // Generate all possible combinations
+    console.log(`[generateTimetableSchedules] Generating schedules with ${preferredInstructorNames.length} preferred instructor(s): ${preferredInstructorNames.join(", ")}`);
     const schedules = generateScheduleCombinations(
       coreCoursesWithSessions,
       electiveCoursesWithSessions,
-      excludedDays
+      excludedDays,
+      preferredInstructorNames
     );
 
     console.log(`[generateTimetableSchedules] Generated ${schedules.length} valid schedule(s)`);
@@ -1746,8 +2010,9 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
     setTimeout(async () => {
       try {
         // Skip cache save if database connection is not available
-        if (!AppDataSource.isInitialized) {
-          console.warn(`[generateTimetableSchedules] Database not initialized, skipping cache save`);
+        const isReady = await ensureDbConnection();
+        if (!isReady) {
+          console.warn(`[generateTimetableSchedules] Database not available, skipping cache save`);
           return;
         }
 
@@ -1936,7 +2201,8 @@ function hasConflicts(combination: any[], conflictMatrix: Map<string, boolean>):
 function generateScheduleCombinations(
   coreCourses: any[],
   electiveCourses: any[],
-  excludedDays: string[]
+  excludedDays: string[],
+  preferredInstructors: string[] = []
 ): any[] {
   const allCourses = [...coreCourses, ...electiveCourses];
   
@@ -2127,7 +2393,7 @@ function generateScheduleCombinations(
       
       // Build schedule from this combination (only if no conflicts)
       // buildSchedule will ensure each course-class bundle includes ALL its components
-      const schedule = buildSchedule(combination, excludedDays);
+      const schedule = buildSchedule(combination, excludedDays, preferredInstructors);
       if (schedule) {
         consecutiveFailures = 0;
         validSchedulesFound++;
@@ -2239,7 +2505,7 @@ function generateScheduleCombinations(
         if (seenCombinations.has(variationKey)) continue;
         seenCombinations.add(variationKey);
         
-        const schedule = buildSchedule(variation, excludedDays);
+        const schedule = buildSchedule(variation, excludedDays, preferredInstructors);
         if (schedule) {
           validSchedulesFound++;
           if (schedule.totalDays < bestDays) bestDays = schedule.totalDays;
@@ -2298,6 +2564,33 @@ function generateScheduleCombinations(
     return totalSlots;
   };
 
+  // Helper function to count preferred instructor courses in a schedule
+  const countPreferredInstructorCourses = (schedule: any): number => {
+    if (preferredInstructors.length === 0) return 0;
+    const normalizedPreferred = preferredInstructors.map(name => name.trim().toLowerCase());
+    const instructorCourses = new Map<string, Set<number>>();
+    
+    schedule.sessions.forEach((s: any) => {
+      if (s.instructor && s.instructor.trim() && s.course) {
+        const normalizedInstructorName = s.instructor.trim().toLowerCase();
+        const preferredIndex = normalizedPreferred.indexOf(normalizedInstructorName);
+        if (preferredIndex !== -1) {
+          const preferredName = preferredInstructors[preferredIndex].trim();
+          if (!instructorCourses.has(preferredName)) {
+            instructorCourses.set(preferredName, new Set());
+          }
+          instructorCourses.get(preferredName)!.add(s.course.id);
+        }
+      }
+    });
+    
+    let totalCourses = 0;
+    instructorCourses.forEach((courseIds) => {
+      totalCourses += courseIds.size;
+    });
+    return totalCourses;
+  };
+
   topSchedules.sort((a, b) => {
     // First: Compare excluded days (0 is best)
     if (a.excludedDaysUsed !== b.excludedDaysUsed) {
@@ -2323,18 +2616,39 @@ function generateScheduleCombinations(
       }
     }
     
-    // Fourth: Compare total days (fewer is better)
+    // Fourth: Compare preferred instructor courses (more is better)
+    // This helps prioritize schedules with preferred instructors even if they have slightly more days/gaps
+    if (preferredInstructors.length > 0) {
+      const aPreferredCourses = countPreferredInstructorCourses(a);
+      const bPreferredCourses = countPreferredInstructorCourses(b);
+      if (aPreferredCourses !== bPreferredCourses) {
+        console.log(`[generateScheduleCombinations] Sorting: Schedule A has ${aPreferredCourses} preferred courses, Schedule B has ${bPreferredCourses} preferred courses → ${bPreferredCourses > aPreferredCourses ? "B ranks higher" : "A ranks higher"}`);
+        return bPreferredCourses - aPreferredCourses; // More preferred courses is better
+      }
+    }
+    
+    // Fifth: Compare total days (fewer is better)
     if (a.totalDays !== b.totalDays) {
       return a.totalDays - b.totalDays;
     }
     
-    // Fifth: Compare gaps (fewer is better)
+    // Sixth: Compare gaps (fewer is better)
     if (a.gaps !== b.gaps) {
       return a.gaps - b.gaps;
     }
     
     // Finally: Compare score (higher is better)
-    return b.score - a.score;
+    const scoreDiff = b.score - a.score;
+    if (Math.abs(scoreDiff) > 1000) { // Only log significant differences
+      console.log(`[generateScheduleCombinations] Sorting by score: Schedule A = ${a.score.toLocaleString()}, Schedule B = ${b.score.toLocaleString()} → ${scoreDiff > 0 ? "B ranks higher" : "A ranks higher"}`);
+    }
+    return scoreDiff;
+  });
+  
+  console.log(`[generateScheduleCombinations] Final sort complete. Top 3 schedules:`);
+  topSchedules.slice(0, 3).forEach((schedule, idx) => {
+    const preferredCourses = preferredInstructors.length > 0 ? countPreferredInstructorCourses(schedule) : 0;
+    console.log(`[generateScheduleCombinations]   #${idx + 1}: Score=${schedule.score.toLocaleString()}, Days=${schedule.totalDays}, Gaps=${schedule.gaps}, ExcludedDays=${schedule.excludedDaysUsed}, PreferredCourses=${preferredCourses}`);
   });
   
   // Separate perfect schedules (zero excluded days) from others
@@ -2619,7 +2933,7 @@ function insertSorted(schedules: any[], schedule: any, maxKeep: number): void {
  * 2. No time conflicts between different course-class combinations
  * 3. All sessions from all components are included as a bundle
  */
-export function buildSchedule(combination: any[], excludedDays: string[]): any | null {
+export function buildSchedule(combination: any[], excludedDays: string[], preferredInstructors: string[] = []): any | null {
   const schedule: any = {
     courses: [],
     sessions: [],
@@ -2863,13 +3177,93 @@ export function buildSchedule(combination: any[], excludedDays: string[]): any |
   // Priority 5: Gaps (zero gaps is best)
   const gapsPenalty = gaps * 10000; // Heavy penalty for gaps
   
+  // Priority 6: Preferred instructors (bonus for courses taught by preferred instructors)
+  let preferredInstructorsBonus = 0;
+  if (preferredInstructors.length > 0) {
+    console.log(`[buildSchedule] Checking preferred instructors: ${preferredInstructors.join(", ")}`);
+    
+    // Normalize preferred instructor names (case-insensitive, trimmed)
+    const normalizedPreferred = preferredInstructors.map(name => name.trim().toLowerCase());
+    
+    // Count how many courses each preferred instructor teaches in this schedule
+    // Map: instructor name -> set of course IDs they teach
+    const instructorCourses = new Map<string, Set<number>>();
+    const instructorCourseDetails = new Map<string, Array<{ courseId: number; courseCode: string; courseName: string }>>();
+    
+    schedule.sessions.forEach((s: any) => {
+      if (s.instructor && s.instructor.trim() && s.course) {
+        const instructorName = s.instructor.trim();
+        const normalizedInstructorName = instructorName.toLowerCase();
+        
+        // Check if this instructor is in the preferred list (case-insensitive)
+        const preferredIndex = normalizedPreferred.indexOf(normalizedInstructorName);
+        if (preferredIndex !== -1) {
+          // Use the original preferred name for consistency
+          const preferredName = preferredInstructors[preferredIndex].trim();
+          
+          if (!instructorCourses.has(preferredName)) {
+            instructorCourses.set(preferredName, new Set());
+            instructorCourseDetails.set(preferredName, []);
+          }
+          
+          // Add course ID if not already added
+          if (!instructorCourses.get(preferredName)!.has(s.course.id)) {
+            instructorCourses.get(preferredName)!.add(s.course.id);
+            instructorCourseDetails.get(preferredName)!.push({
+              courseId: s.course.id,
+              courseCode: s.course.code || "N/A",
+              courseName: s.course.name || "N/A"
+            });
+          }
+        }
+      }
+    });
+    
+    // Calculate bonus: 100000 points per course taught by preferred instructors (increased from 10000)
+    // If an instructor teaches 1 course: +100000
+    // If an instructor teaches 2 courses: +200000 (100000 per course)
+    // And so on...
+    preferredInstructorsBonus = 0;
+    const bonusPerCourse = 100000; // Increased from 10000
+    
+    console.log(`[buildSchedule] Preferred instructor analysis:`);
+    instructorCourses.forEach((courseIds, instructorName) => {
+      const coursesCount = courseIds.size;
+      const bonus = coursesCount * bonusPerCourse;
+      preferredInstructorsBonus += bonus;
+      
+      const courseDetails = instructorCourseDetails.get(instructorName) || [];
+      const courseCodes = courseDetails.map(c => c.courseCode).join(", ");
+      
+      console.log(`[buildSchedule]   ✓ "${instructorName}": teaches ${coursesCount} course(s) [${courseCodes}] → +${bonus.toLocaleString()} points`);
+    });
+    
+    if (preferredInstructorsBonus > 0) {
+      console.log(`[buildSchedule] Total preferred instructors bonus: +${preferredInstructorsBonus.toLocaleString()} points`);
+    } else {
+      console.log(`[buildSchedule] No preferred instructors found in this schedule`);
+    }
+  }
+  
   // Final score calculation
   schedule.score = baseScore 
     + excludedDaysScore 
     - excludedDaysLecturePenalty 
     - excludedDaysSlotsPenalty 
     + daysBonus 
-    - gapsPenalty;
+    - gapsPenalty
+    + preferredInstructorsBonus;
+  
+  // Log final score breakdown
+  console.log(`[buildSchedule] Score breakdown:`);
+  console.log(`[buildSchedule]   Base score: ${baseScore.toLocaleString()}`);
+  console.log(`[buildSchedule]   Excluded days score: ${excludedDaysScore.toLocaleString()}`);
+  console.log(`[buildSchedule]   Excluded days lecture penalty: -${excludedDaysLecturePenalty.toLocaleString()}`);
+  console.log(`[buildSchedule]   Excluded days slots penalty: -${excludedDaysSlotsPenalty.toLocaleString()}`);
+  console.log(`[buildSchedule]   Days bonus: +${daysBonus.toLocaleString()}`);
+  console.log(`[buildSchedule]   Gaps penalty: -${gapsPenalty.toLocaleString()}`);
+  console.log(`[buildSchedule]   Preferred instructors bonus: +${preferredInstructorsBonus.toLocaleString()}`);
+  console.log(`[buildSchedule]   FINAL SCORE: ${schedule.score.toLocaleString()}`);
   schedule.excludedDaysUsed = excludedDaysUsed;
   schedule.totalDays = totalDays;
   schedule.gaps = gaps;

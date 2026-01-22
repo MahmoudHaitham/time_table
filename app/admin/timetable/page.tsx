@@ -45,7 +45,16 @@ export default function TimetableAdminPage() {
     try {
       setLoading(true);
       const response = await termsAPI.getAll();
-      setTerms(response.data || []);
+      const allTerms = response.data || [];
+      
+      // Sort terms by term_number (ascending: 3, 4, 5, ...)
+      const sortedTerms = allTerms.sort((a: Term, b: Term) => {
+        const termNumA = parseInt(a.term_number);
+        const termNumB = parseInt(b.term_number);
+        return termNumA - termNumB;
+      });
+      
+      setTerms(sortedTerms);
       setError(null);
     } catch (err: any) {
       if (err.message?.includes("401") || err.message?.includes("Authentication")) {
