@@ -248,7 +248,7 @@ export default function StudentManualPage() {
               <ul className="space-y-2 text-gray-300 mb-4">
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-4 h-4 text-teal-400 flex-shrink-0 mt-1" />
-                  <span><strong>View Published Timetables:</strong> See all academic schedules that have been published by administrators</span>
+                  <span><strong>View Published Timetables:</strong> See all academic schedules that have been published by university</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-4 h-4 text-teal-400 flex-shrink-0 mt-1" />
@@ -257,10 +257,6 @@ export default function StudentManualPage() {
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-4 h-4 text-teal-400 flex-shrink-0 mt-1" />
                   <span><strong>Access Term Details:</strong> Click on any term to view its complete timetable with all classes and schedules</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-teal-400 flex-shrink-0 mt-1" />
-                  <span><strong>No Login Required:</strong> This page is publicly accessible - no authentication needed</span>
                 </li>
               </ul>
               <a
@@ -285,8 +281,7 @@ export default function StudentManualPage() {
                 <li>Each section displays all published terms for that system</li>
                 <li>Each term card shows:
                   <ul className="list-disc list-inside ml-6 mt-2 space-y-1">
-                    <li>Term number (e.g., "Term 1", "Fall 2024")</li>
-                    <li>Published status badge (green indicator)</li>
+                    <li>Term number </li>
                     <li>System type badge</li>
                   </ul>
                 </li>
@@ -325,7 +320,7 @@ export default function StudentManualPage() {
                   <ul className="space-y-2 text-gray-300">
                     <li className="flex items-start gap-2">
                       <span className="px-2 py-1 bg-teal-500/30 text-teal-300 rounded text-xs font-mono">Term Number</span>
-                      <span>The academic term identifier (e.g., "Term 1", "Fall 2024")</span>
+                      <span>The academic term identifier</span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="px-2 py-1 bg-green-500/30 text-green-300 rounded text-xs font-mono">Published Badge</span>
@@ -408,8 +403,8 @@ export default function StudentManualPage() {
           className="glass border border-white/10 rounded-2xl p-10 sm:p-12 shadow-xl mb-12"
         >
           <div className="flex items-center gap-4 mb-8">
-            <div className={`p-4 bg-gradient-to-br ${sections[1].color} rounded-xl shadow-lg`}>
-              <Filter className={`w-7 h-7 ${sections[1].iconColor}`} />
+            <div className={`p-4 bg-gradient-to-br ${sections[2].color} rounded-xl shadow-lg`}>
+              <Filter className={`w-7 h-7 ${sections[2].iconColor}`} />
             </div>
             <div>
               <h2 className="text-3xl font-bold text-white mb-2">System Selection</h2>
@@ -473,8 +468,8 @@ export default function StudentManualPage() {
           className="glass border border-white/10 rounded-2xl p-10 sm:p-12 shadow-xl mb-12"
         >
           <div className="flex items-center gap-4 mb-8">
-            <div className={`p-4 bg-gradient-to-br ${sections[2].color} rounded-xl shadow-lg`}>
-              <CheckCircle2 className={`w-7 h-7 ${sections[2].iconColor}`} />
+            <div className={`p-4 bg-gradient-to-br ${sections[3].color} rounded-xl shadow-lg`}>
+              <CheckCircle2 className={`w-7 h-7 ${sections[3].iconColor}`} />
             </div>
             <div>
               <h2 className="text-3xl font-bold text-white mb-2">Setting Preferences</h2>
@@ -502,7 +497,7 @@ export default function StudentManualPage() {
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-4 h-4 text-green-400 flex-shrink-0 mt-1" />
-                  <span>Schedules with fewer excluded days will rank higher</span>
+                  <span>Schedules that avoid your excluded days are prioritized</span>
                 </li>
               </ul>
             </div>
@@ -532,7 +527,7 @@ export default function StudentManualPage() {
               <div className="p-4 bg-purple-500/20 border border-purple-500/30 rounded-lg mt-4">
                 <p className="text-purple-200 text-sm">
                   <Info className="w-4 h-4 inline mr-1" />
-                  <strong>Tip:</strong> The maximum electives limit is calculated based on how many elective courses are assigned to classes in your term. This ensures fairness across all students.
+                  <strong>Tip:</strong> The maximum electives limit is determined by how many elective courses are assigned to classes in your term.
                 </p>
               </div>
             </div>
@@ -543,7 +538,7 @@ export default function StudentManualPage() {
                 3. Preferred Instructors (Optional)
               </h3>
               <p className="text-gray-300 mb-4">
-                Select instructors you prefer. Schedules with more preferred instructors will rank higher in the results.
+                Select instructors you prefer. Schedules with more preferred instructors are prioritized in the results.
               </p>
               <ul className="space-y-2 text-gray-300 mb-4">
                 <li className="flex items-start gap-2">
@@ -556,19 +551,13 @@ export default function StudentManualPage() {
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-1" />
-                  <span>Schedules where preferred instructors teach multiple courses get higher scores</span>
+                  <span>Schedules where preferred instructors teach multiple courses are prioritized</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-1" />
                   <span>This is optional - you can skip it if you don't have preferences</span>
                 </li>
               </ul>
-              <div className="p-4 bg-emerald-500/20 border border-emerald-500/30 rounded-lg mt-4">
-                <p className="text-emerald-200 text-sm">
-                  <Info className="w-4 h-4 inline mr-1" />
-                  <strong>How it works:</strong> If you select an instructor and they teach 2 courses in a schedule, that schedule gets a significant score boost. The more courses they teach, the higher the score.
-                </p>
-              </div>
             </div>
 
             <div className="p-6 bg-white/5 rounded-xl border border-white/10">
@@ -606,12 +595,12 @@ export default function StudentManualPage() {
           className="glass border border-white/10 rounded-2xl p-10 sm:p-12 shadow-xl mb-12"
         >
           <div className="flex items-center gap-4 mb-8">
-            <div className={`p-4 bg-gradient-to-br ${sections[3].color} rounded-xl shadow-lg`}>
-              <Calendar className={`w-7 h-7 ${sections[3].iconColor}`} />
+            <div className={`p-4 bg-gradient-to-br ${sections[4].color} rounded-xl shadow-lg`}>
+              <Clock className={`w-7 h-7 ${sections[4].iconColor}`} />
             </div>
             <div>
               <h2 className="text-3xl font-bold text-white mb-2">Viewing Schedules</h2>
-              <p className="text-gray-400">Understanding how schedules are generated and ranked</p>
+              <p className="text-gray-400">Understanding how schedules are generated and displayed</p>
             </div>
           </div>
 
@@ -627,38 +616,11 @@ export default function StudentManualPage() {
               <ol className="space-y-3 text-gray-300 list-decimal list-inside mb-4">
                 <li>The system generates all possible combinations of your selected courses</li>
                 <li>It filters out schedules with time conflicts</li>
-                <li>Schedules are scored and ranked based on your preferences</li>
-                <li>Top 50 schedules are displayed, sorted by score</li>
+                <li>Schedules are organized based on your preferences</li>
+                <li>Multiple schedule options are displayed for you to choose from</li>
               </ol>
             </div>
 
-            <div className="p-6 bg-white/5 rounded-xl border border-white/10">
-              <h3 className="text-xl font-bold text-white mb-4">Schedule Ranking Criteria</h3>
-              <p className="text-gray-300 mb-4">
-                Schedules are ranked in this priority order:
-              </p>
-              <div className="space-y-3">
-                {[
-                  { priority: "1", title: "Fewer Excluded Days", desc: "Schedules that avoid your excluded days rank highest" },
-                  { priority: "2", title: "No Lectures on Excluded Days", desc: "If excluded days are used, schedules without Lecture (L) sessions on those days rank higher" },
-                  { priority: "3", title: "Fewer Slots on Excluded Days", desc: "Among schedules using excluded days, those with fewer slots rank higher" },
-                  { priority: "4", title: "Preferred Instructors", desc: "Schedules with more preferred instructors (teaching multiple courses) rank higher" },
-                  { priority: "5", title: "Fewer Total Days", desc: "Schedules that use fewer days per week rank higher" },
-                  { priority: "6", title: "Fewer Gaps", desc: "Schedules with fewer time gaps between classes rank higher" },
-                  { priority: "7", title: "Overall Score", desc: "Final ranking by calculated score" },
-                ].map((item) => (
-                  <div key={item.priority} className="flex gap-4 p-3 bg-white/5 rounded-lg">
-                    <div className="flex-shrink-0 w-8 h-8 bg-purple-500/30 rounded-full flex items-center justify-center text-purple-300 font-bold">
-                      {item.priority}
-                    </div>
-                    <div className="flex-1">
-                      <div className="font-semibold text-white mb-1">{item.title}</div>
-                      <div className="text-sm text-gray-400">{item.desc}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
 
             <div className="p-6 bg-white/5 rounded-xl border border-white/10">
               <h3 className="text-xl font-bold text-white mb-4">Understanding Schedule Display</h3>
@@ -683,7 +645,6 @@ export default function StudentManualPage() {
                 <div>
                   <h4 className="font-semibold text-white mb-2">Schedule Information</h4>
                   <ul className="space-y-2 text-gray-300">
-                    <li><strong>Score:</strong> Higher scores indicate better schedules based on your preferences</li>
                     <li><strong>Total Days:</strong> Number of days per week with classes</li>
                     <li><strong>Gaps:</strong> Number of time gaps between consecutive classes</li>
                     <li><strong>Excluded Days Used:</strong> How many of your excluded days appear in this schedule</li>
@@ -703,8 +664,8 @@ export default function StudentManualPage() {
           className="glass border border-white/10 rounded-2xl p-10 sm:p-12 shadow-xl mb-12"
         >
           <div className="flex items-center gap-4 mb-8">
-            <div className={`p-4 bg-gradient-to-br ${sections[4].color} rounded-xl shadow-lg`}>
-              <HelpCircle className={`w-7 h-7 ${sections[4].iconColor}`} />
+            <div className={`p-4 bg-gradient-to-br ${sections[5].color} rounded-xl shadow-lg`}>
+              <HelpCircle className={`w-7 h-7 ${sections[5].iconColor}`} />
             </div>
             <div>
               <h2 className="text-3xl font-bold text-white mb-2">Other Section</h2>
@@ -794,8 +755,8 @@ export default function StudentManualPage() {
           className="glass border border-white/10 rounded-2xl p-10 sm:p-12 shadow-xl mb-12"
         >
           <div className="flex items-center gap-4 mb-8">
-            <div className={`p-4 bg-gradient-to-br ${sections[5].color} rounded-xl shadow-lg`}>
-              <BookOpen className={`w-7 h-7 ${sections[5].iconColor}`} />
+            <div className={`p-4 bg-gradient-to-br ${sections[6].color} rounded-xl shadow-lg`}>
+              <BookOpen className={`w-7 h-7 ${sections[6].iconColor}`} />
             </div>
             <div>
               <h2 className="text-3xl font-bold text-white mb-2">Electives</h2>
