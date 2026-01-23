@@ -59,6 +59,7 @@ export default function SchedulesPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [excludedDays, setExcludedDays] = useState<string[]>([]);
   const [termNumber, setTermNumber] = useState<string>("");
+  const [downloadingPDF, setDownloadingPDF] = useState<number | "all" | null>(null);
   const schedulesPerPage = 5;
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; type: "success" | "error" | "warning" | "info"; title: string; message: string }>({
     isOpen: false,
@@ -137,6 +138,7 @@ export default function SchedulesPage() {
 
   const handleDownloadPDF = async (schedule: Schedule, scheduleIndex: number) => {
     try {
+      setDownloadingPDF(scheduleIndex);
       const jsPDF = (await import("jspdf")).default;
       await import("jspdf-autotable");
 
@@ -149,25 +151,17 @@ export default function SchedulesPage() {
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
 
-      // Create gradient background
-      const gradientSteps = 20;
-      for (let i = 0; i < gradientSteps; i++) {
-        const color = [
-          Math.floor(3 + (i / gradientSteps) * 10),
-          Math.floor(7 + (i / gradientSteps) * 15),
-          Math.floor(18 + (i / gradientSteps) * 25)
-        ];
-        doc.setFillColor(color[0], color[1], color[2]);
-        doc.rect(0, (i / gradientSteps) * pageHeight, pageWidth, pageHeight / gradientSteps, "F");
-      }
+      // Dark background for entire page (#030712)
+      doc.setFillColor(3, 7, 18);
+      doc.rect(0, 0, pageWidth, pageHeight, "F");
 
-      // Header
+      // Neon header with gradient effect
       const headerHeight = 28;
       for (let i = 0; i < headerHeight; i++) {
         const ratio = i / headerHeight;
-        const r = Math.floor(6 + ratio * 53);
-        const g = Math.floor(182 + ratio * -52);
-        const b = Math.floor(212 + ratio * 34);
+        const r = Math.floor(6 + ratio * 20);
+        const g = Math.floor(182 - ratio * 30);
+        const b = Math.floor(212 - ratio * 40);
         doc.setFillColor(r, g, b);
         doc.rect(0, i, pageWidth, 1, "F");
       }
@@ -260,7 +254,18 @@ export default function SchedulesPage() {
 
           if (session) {
             const componentType = session.component_type === "L" ? "Lec" : session.component_type === "S" ? "Sec" : "Lab";
-            const cellText = `${session.course.code}\n${componentType}${session.room ? `\n${session.room}` : ""}`;
+            // Use course name instead of code, make it bold and larger
+            let cellText = `${session.course.name}\n${componentType}`;
+            if (session.room) {
+              cellText += `\n${session.room}`;
+            }
+            if (session.instructor) {
+              // Handle multiple instructors (comma-separated)
+              const instructors = session.instructor.split(',').map(i => i.trim()).filter(i => i);
+              if (instructors.length > 0) {
+                cellText += `\n${instructors.length === 1 ? instructors[0] : instructors.join(', ')}`;
+              }
+            }
             row.push(cellText);
           } else {
             row.push("");
@@ -282,34 +287,36 @@ export default function SchedulesPage() {
         startY: tableStartY,
         theme: "grid",
         headStyles: {
-          fillColor: [6, 182, 212],
+          fillColor: [15, 23, 42], // Dark slate
           textColor: [255, 255, 255],
           fontStyle: "bold",
           fontSize: 10,
           halign: "center",
-          lineColor: [167, 243, 208],
-          lineWidth: 0.5,
+          lineColor: [6, 182, 212], // Neon cyan
+          lineWidth: 1,
         },
         bodyStyles: {
-          fillColor: [255, 255, 255, 0.06],
-          textColor: [226, 232, 240],
-          fontSize: 8.5,
+          fillColor: [20, 20, 30], // Very dark
+          textColor: [255, 255, 255],
+          fontSize: 9, // Larger base font for course names
           halign: "center",
           valign: "middle",
-          lineColor: [203, 213, 225, 0.3],
-          lineWidth: 0.3,
+          lineColor: [40, 40, 50], // Dark borders
+          lineWidth: 0.5,
+          fontStyle: "bold", // Make course name bold
         },
         alternateRowStyles: {
-          fillColor: [255, 255, 255, 0.1],
+          fillColor: [15, 23, 42], // Slightly lighter dark
         },
         columnStyles: {
           0: {
-            fillColor: [6, 182, 212, 0.25],
-            textColor: [167, 243, 208],
+            fillColor: [15, 23, 42],
+            textColor: [6, 182, 212], // Neon cyan text
             fontStyle: "bold",
             halign: "center",
             cellWidth: 32,
-            lineColor: [167, 243, 208, 0.5],
+            lineColor: [6, 182, 212], // Neon cyan border
+            lineWidth: 1,
           },
         },
         styles: {
@@ -322,29 +329,30 @@ export default function SchedulesPage() {
             const cellText = data.cell.text[0];
             if (cellText && cellText.includes("\n")) {
               const lines = cellText.split("\n");
+              // First line is course name - make it bold and larger
+              data.cell.styles.fontSize = 9.5;
+              data.cell.styles.fontStyle = "bold";
+              
               if (lines[1]) {
                 const componentType = lines[1];
                 if (componentType === "Lec") {
-                  data.cell.styles.fillColor = [6, 182, 212, 0.35];
-                  data.cell.styles.textColor = [167, 243, 208];
-                  data.cell.styles.fontStyle = "bold";
-                  data.cell.styles.fontSize = 9;
-                  data.cell.styles.lineColor = [6, 182, 212, 0.5];
-                  data.cell.styles.lineWidth = 0.4;
+                  // Red - matching site: from-red-500/20 bg, border-red-500/50
+                  data.cell.styles.fillColor = [239, 68, 68, 0.2]; // red-500 at 20%
+                  data.cell.styles.textColor = [255, 255, 255];
+                  data.cell.styles.lineColor = [239, 68, 68, 0.5]; // red-500 at 50%
+                  data.cell.styles.lineWidth = 0.5; // Softer, thinner
                 } else if (componentType === "Sec") {
-                  data.cell.styles.fillColor = [59, 130, 246, 0.35];
-                  data.cell.styles.textColor = [147, 197, 253];
-                  data.cell.styles.fontStyle = "bold";
-                  data.cell.styles.fontSize = 9;
-                  data.cell.styles.lineColor = [59, 130, 246, 0.5];
-                  data.cell.styles.lineWidth = 0.4;
+                  // Blue - matching site: from-blue-500/20 bg, border-blue-500/50
+                  data.cell.styles.fillColor = [59, 130, 246, 0.2]; // blue-500 at 20%
+                  data.cell.styles.textColor = [255, 255, 255];
+                  data.cell.styles.lineColor = [59, 130, 246, 0.5]; // blue-500 at 50%
+                  data.cell.styles.lineWidth = 0.5; // Softer, thinner
                 } else if (componentType === "Lab") {
-                  data.cell.styles.fillColor = [168, 85, 247, 0.35];
-                  data.cell.styles.textColor = [196, 181, 253];
-                  data.cell.styles.fontStyle = "bold";
-                  data.cell.styles.fontSize = 9;
-                  data.cell.styles.lineColor = [168, 85, 247, 0.5];
-                  data.cell.styles.lineWidth = 0.4;
+                  // Purple - matching site: from-purple-500/20 bg, border-purple-500/50
+                  data.cell.styles.fillColor = [168, 85, 247, 0.2]; // purple-500 at 20%
+                  data.cell.styles.textColor = [255, 255, 255];
+                  data.cell.styles.lineColor = [168, 85, 247, 0.5]; // purple-500 at 50%
+                  data.cell.styles.lineWidth = 0.5; // Softer, thinner
                 }
               }
             }
@@ -354,34 +362,27 @@ export default function SchedulesPage() {
 
       let finalY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 10 : 100;
 
-      doc.setDrawColor(167, 243, 208, 0.4);
+      // Softer divider line
+      doc.setDrawColor(6, 182, 212, 0.3);
       doc.setLineWidth(0.5);
       doc.line(10, finalY - 2, pageWidth - 10, finalY - 2);
 
       const estimatedCoursesHeight = 20 + (schedule.courses.length * 12);
       if (finalY + estimatedCoursesHeight > pageHeight - 20) {
         doc.addPage();
-        for (let i = 0; i < gradientSteps; i++) {
-          const color = [
-            Math.floor(3 + (i / gradientSteps) * 10),
-            Math.floor(7 + (i / gradientSteps) * 15),
-            Math.floor(18 + (i / gradientSteps) * 25)
-          ];
-          doc.setFillColor(color[0], color[1], color[2]);
-          doc.rect(0, (i / gradientSteps) * pageHeight, pageWidth, pageHeight / gradientSteps, "F");
-        }
+        doc.setFillColor(3, 7, 18);
+        doc.rect(0, 0, pageWidth, pageHeight, "F");
         finalY = 20;
       }
 
       const coursesSectionHeight = Math.min(20 + (schedule.courses.length * 12), pageHeight - finalY - 10);
 
-      doc.setFillColor(30, 41, 59);
+      // Soft background for courses section
+      doc.setFillColor(15, 23, 42);
       doc.rect(8, finalY - 4, pageWidth - 16, coursesSectionHeight + 6, "F");
 
-      doc.setFillColor(51, 65, 85);
-      doc.rect(10, finalY - 2, pageWidth - 20, coursesSectionHeight + 2, "F");
-
-      doc.setDrawColor(167, 243, 208);
+      // Subtle border (softer, thinner)
+      doc.setDrawColor(6, 182, 212);
       doc.setLineWidth(0.5);
       doc.rect(10, finalY - 2, pageWidth - 20, coursesSectionHeight + 2, "D");
 
@@ -476,7 +477,388 @@ export default function SchedulesPage() {
       doc.save(fileName);
     } catch (error: any) {
       console.error("Error generating PDF:", error);
-      alert("Failed to generate PDF: " + error.message);
+      setAlertModal({
+        isOpen: true,
+        type: "error",
+        title: "PDF Export Failed",
+        message: error.message || "Failed to generate PDF. Please try again.",
+      });
+    } finally {
+      setDownloadingPDF(null);
+    }
+  };
+
+  const handleDownloadAllPDFs = async () => {
+    try {
+      setDownloadingPDF("all");
+      const jsPDF = (await import("jspdf")).default;
+      await import("jspdf-autotable");
+
+      const doc = new jsPDF({
+        orientation: "landscape",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const termNum = termNumber || "Term";
+      const gradientSteps = 20;
+
+      // Export all schedules into one PDF
+      schedules.forEach((schedule, scheduleIndex) => {
+        // Add new page for each schedule (except the first one)
+        if (scheduleIndex > 0) {
+          doc.addPage();
+        }
+
+        // Dark background for entire page
+        doc.setFillColor(3, 7, 18);
+        doc.rect(0, 0, pageWidth, pageHeight, "F");
+
+        // Neon header with gradient effect
+        const headerHeight = 28;
+        for (let i = 0; i < headerHeight; i++) {
+          const ratio = i / headerHeight;
+          const r = Math.floor(6 + ratio * 20);
+          const g = Math.floor(182 - ratio * 30);
+          const b = Math.floor(212 - ratio * 40);
+          doc.setFillColor(r, g, b);
+          doc.rect(0, i, pageWidth, 1, "F");
+        }
+
+        doc.setDrawColor(167, 243, 208);
+        doc.setLineWidth(0.5);
+        doc.line(0, headerHeight, pageWidth, headerHeight);
+
+        doc.setFontSize(24);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(255, 255, 255);
+        doc.text("Student Timetable", 14, 17);
+
+        doc.setFontSize(11);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(255, 255, 255);
+
+        doc.setFillColor(15, 23, 42);
+        doc.rect(14, 21, 25, 6, "F");
+        doc.setDrawColor(6, 182, 212);
+        doc.setLineWidth(1);
+        doc.rect(14, 21, 25, 6, "D");
+        doc.setTextColor(6, 182, 212);
+        doc.setFont("helvetica", "bold");
+        doc.text(`Term ${termNum}`, 16.5, 24.5);
+
+        doc.setFillColor(6, 182, 212);
+        doc.rect(42, 21, 35, 6, "F");
+        doc.setTextColor(255, 255, 255);
+        doc.text(`Schedule Option ${scheduleIndex + 1}`, 44, 24.5);
+
+        let statsY = 32;
+        const statsWidth = pageWidth - 20;
+        const statsHeight = 12;
+
+        doc.setFillColor(15, 23, 42);
+        doc.rect(10, statsY - 2, statsWidth, statsHeight, "F");
+
+        doc.setDrawColor(6, 182, 212);
+        doc.setLineWidth(1);
+        doc.rect(10, statsY - 2, statsWidth, statsHeight, "D");
+
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(167, 243, 208);
+
+        doc.setFillColor(6, 182, 212);
+        doc.rect(14, statsY, 30, 5, "F");
+        doc.setTextColor(255, 255, 255);
+        doc.setFont("helvetica", "bold");
+        doc.text(`${schedule.totalDays}`, 16, statsY + 3.2);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.text(`day(s)/week`, 22, statsY + 3.2);
+
+        if (schedule.gaps > 0) {
+          doc.setFillColor(59, 130, 246);
+          doc.rect(48, statsY, 25, 5, "F");
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(9);
+          doc.setTextColor(255, 255, 255);
+          doc.text(`${schedule.gaps}`, 50, statsY + 3.2);
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(8);
+          doc.text(`gap(s)`, 55, statsY + 3.2);
+        }
+
+        if (schedule.excludedDaysUsed > 0) {
+          doc.setFillColor(251, 191, 36);
+          doc.rect(77, statsY, 35, 5, "F");
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(9);
+          doc.setTextColor(0, 0, 0);
+          doc.text(`${schedule.excludedDaysUsed} excluded`, 79, statsY + 3.2);
+        }
+
+        statsY += 8;
+
+        const tableData: any[][] = [];
+        const DAYS_ORDER = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"];
+        const SLOTS_ORDER = [1, 2, 3, 4];
+
+        const headers = ["Time", ...DAYS_ORDER];
+
+        SLOTS_ORDER.forEach((slot) => {
+          const row: any[] = [`Slot ${slot}`];
+
+          DAYS_ORDER.forEach((day) => {
+            const session = schedule.sessions.find(
+              (s) => s.day === day && s.slot === slot
+            );
+
+            if (session) {
+              const componentType = session.component_type === "L" ? "Lec" : session.component_type === "S" ? "Sec" : "Lab";
+              // Use course name instead of code
+              let cellText = `${session.course.name}\n${componentType}`;
+              if (session.room) {
+                cellText += `\n${session.room}`;
+              }
+              if (session.instructor) {
+                const instructors = session.instructor.split(',').map(i => i.trim()).filter(i => i);
+                if (instructors.length > 0) {
+                  cellText += `\n${instructors.length === 1 ? instructors[0] : instructors.join(', ')}`;
+                }
+              }
+              row.push(cellText);
+            } else {
+              row.push("");
+            }
+          });
+
+          tableData.push(row);
+        });
+
+        const tableStartY = statsY + 5;
+
+        doc.setDrawColor(167, 243, 208);
+        doc.setLineWidth(0.5);
+        doc.line(10, tableStartY - 3, pageWidth - 10, tableStartY - 3);
+
+        (doc as any).autoTable({
+          head: [headers],
+          body: tableData,
+          startY: tableStartY,
+          theme: "grid",
+          headStyles: {
+            fillColor: [6, 182, 212],
+            textColor: [255, 255, 255],
+            fontStyle: "bold",
+            fontSize: 10,
+            halign: "center",
+            lineColor: [167, 243, 208],
+            lineWidth: 0.5,
+          },
+          bodyStyles: {
+            fillColor: [255, 255, 255, 0.06],
+            textColor: [226, 232, 240],
+            fontSize: 8.5,
+            halign: "center",
+            valign: "middle",
+            lineColor: [203, 213, 225, 0.3],
+            lineWidth: 0.3,
+          },
+          alternateRowStyles: {
+            fillColor: [255, 255, 255, 0.1],
+          },
+          columnStyles: {
+            0: {
+              fillColor: [6, 182, 212, 0.25],
+              textColor: [167, 243, 208],
+              fontStyle: "bold",
+              halign: "center",
+              cellWidth: 32,
+              lineColor: [167, 243, 208, 0.5],
+            },
+          },
+          styles: {
+            cellPadding: 4,
+            lineWidth: 0.5,
+            lineColor: [203, 213, 225],
+          },
+          didParseCell: (data: any) => {
+            if (data.row.index > 0 && data.column.index > 0) {
+              const cellText = data.cell.text[0];
+              if (cellText && cellText.includes("\n")) {
+                const lines = cellText.split("\n");
+                if (lines[1]) {
+                  const componentType = lines[1];
+                  if (componentType === "Lec") {
+                    data.cell.styles.fillColor = [6, 182, 212, 0.35];
+                    data.cell.styles.textColor = [167, 243, 208];
+                    data.cell.styles.fontStyle = "bold";
+                    data.cell.styles.fontSize = 9;
+                    data.cell.styles.lineColor = [6, 182, 212, 0.5];
+                    data.cell.styles.lineWidth = 0.4;
+                  } else if (componentType === "Sec") {
+                    data.cell.styles.fillColor = [59, 130, 246, 0.35];
+                    data.cell.styles.textColor = [147, 197, 253];
+                    data.cell.styles.fontStyle = "bold";
+                    data.cell.styles.fontSize = 9;
+                    data.cell.styles.lineColor = [59, 130, 246, 0.5];
+                    data.cell.styles.lineWidth = 0.4;
+                  } else if (componentType === "Lab") {
+                    data.cell.styles.fillColor = [168, 85, 247, 0.35];
+                    data.cell.styles.textColor = [196, 181, 253];
+                    data.cell.styles.fontStyle = "bold";
+                    data.cell.styles.fontSize = 9;
+                    data.cell.styles.lineColor = [168, 85, 247, 0.5];
+                    data.cell.styles.lineWidth = 0.4;
+                  }
+                }
+              }
+            }
+          },
+        });
+
+        let finalY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 10 : 100;
+
+        // Softer divider line
+        doc.setDrawColor(6, 182, 212, 0.3);
+        doc.setLineWidth(0.5);
+        doc.line(10, finalY - 2, pageWidth - 10, finalY - 2);
+
+        const estimatedCoursesHeight = 20 + (schedule.courses.length * 12);
+        if (finalY + estimatedCoursesHeight > pageHeight - 20) {
+          doc.addPage();
+          doc.setFillColor(3, 7, 18);
+          doc.rect(0, 0, pageWidth, pageHeight, "F");
+          finalY = 20;
+        }
+
+        const coursesSectionHeight = Math.min(20 + (schedule.courses.length * 12), pageHeight - finalY - 10);
+
+        // Dark background for courses section
+        doc.setFillColor(15, 23, 42);
+        doc.rect(8, finalY - 4, pageWidth - 16, coursesSectionHeight + 6, "F");
+
+        // Neon cyan border
+        doc.setDrawColor(6, 182, 212);
+        doc.setLineWidth(1);
+        doc.rect(10, finalY - 2, pageWidth - 20, coursesSectionHeight + 2, "D");
+
+        doc.setFontSize(16);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(6, 182, 212);
+        doc.text("Courses in this schedule:", 14, finalY + 1);
+
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        let yPos = finalY + 8;
+
+        const sortedCourses = [...schedule.courses].sort((a, b) =>
+          a.course.code.localeCompare(b.course.code)
+        );
+
+        sortedCourses.forEach((courseData, idx) => {
+          if (yPos > pageHeight - 25) {
+            doc.addPage();
+            doc.setFillColor(3, 7, 18);
+            doc.rect(0, 0, pageWidth, pageHeight, "F");
+
+            const remainingCourses = sortedCourses.length - idx;
+            const remainingHeight = Math.min(20 + (remainingCourses * 12), pageHeight - 20);
+            doc.setFillColor(15, 23, 42);
+            doc.rect(10, 15, pageWidth - 20, remainingHeight, "F");
+            doc.setDrawColor(6, 182, 212);
+            doc.setLineWidth(1);
+            doc.rect(10, 15, pageWidth - 20, remainingHeight, "D");
+
+            doc.setFontSize(16);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(6, 182, 212);
+            doc.text("Courses (continued):", 14, 22);
+
+            doc.setFontSize(10);
+            doc.setFont("helvetica", "normal");
+            yPos = 28;
+          }
+
+          const cardHeight = 10;
+          const cardX = 14;
+          const cardWidth = pageWidth - 28;
+
+          // Soft card matching site (embedded, not outlined)
+          doc.setFillColor(15, 23, 42);
+          doc.rect(cardX, yPos - 3, cardWidth, cardHeight, "F");
+
+          // Subtle border (softer, thinner)
+          doc.setDrawColor(6, 182, 212);
+          doc.setLineWidth(0.5);
+          doc.rect(cardX, yPos - 3, cardWidth, cardHeight, "D");
+
+          // Subtle accent line (thinner)
+          doc.setFillColor(6, 182, 212);
+          doc.rect(cardX, yPos - 3, 1.5, cardHeight, "F");
+
+          doc.setTextColor(255, 255, 255);
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(10.5);
+          const courseText = `${courseData.course.code} - ${courseData.course.name}`;
+          const maxWidth = cardWidth - 8;
+          const lines = doc.splitTextToSize(courseText, maxWidth);
+          doc.text(lines, cardX + 5, yPos + 1);
+          yPos += lines.length * 4.5;
+
+          doc.setFillColor(6, 182, 212);
+          doc.rect(cardX + 5, yPos - 1, 35, 4.5, "F");
+
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(9);
+          doc.setTextColor(6, 182, 212);
+          doc.text("Class:", cardX + 7, yPos + 1.5);
+
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(255, 255, 255);
+          doc.text(courseData.class.class_code, cardX + 18, yPos + 1.5);
+
+          yPos += 7;
+        });
+      });
+
+      // Footer on all pages - dark with subtle text
+      const totalPages = doc.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        // Ensure dark background on all pages
+        doc.setFillColor(3, 7, 18);
+        doc.rect(0, pageHeight - 10, pageWidth, 10, "F");
+        doc.setFontSize(8);
+        doc.setTextColor(100, 100, 120);
+        doc.text(
+          `Page ${i} of ${totalPages}`,
+          pageWidth - 10,
+          pageHeight - 5,
+          { align: "right" }
+        );
+      }
+
+      doc.save(`All_Schedules_Term_${termNum}.pdf`);
+      
+      setAlertModal({
+        isOpen: true,
+        type: "success",
+        title: "PDF Generated",
+        message: `Successfully generated single PDF file with all ${schedules.length} schedule(s).`,
+      });
+    } catch (error: any) {
+      console.error("Error generating PDF:", error);
+      setAlertModal({
+        isOpen: true,
+        type: "error",
+        title: "PDF Export Failed",
+        message: error.message || "Failed to generate PDF. Please try again.",
+      });
+    } finally {
+      setDownloadingPDF(null);
     }
   };
 
@@ -609,6 +991,33 @@ export default function SchedulesPage() {
           </motion.div>
         )}
 
+        {/* Download All Button */}
+        {schedules.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6"
+          >
+            <button
+              onClick={handleDownloadAllPDFs}
+              disabled={downloadingPDF === "all" || loading}
+              className="w-full px-6 py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-bold text-lg shadow-2xl shadow-green-500/50 hover:shadow-green-500/70 hover:scale-[1.02] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-3"
+            >
+              {downloadingPDF === "all" ? (
+                <>
+                  <div className="w-6 h-6 border-3 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Generating PDFs...
+                </>
+              ) : (
+                <>
+                  <Download className="w-6 h-6" />
+                  Download All Schedules as Single PDF ({schedules.length} schedule{schedules.length !== 1 ? 's' : ''})
+                </>
+              )}
+            </button>
+          </motion.div>
+        )}
+
         {/* Pagination */}
         {schedules.length > 0 && (
           <motion.div
@@ -695,10 +1104,21 @@ export default function SchedulesPage() {
                   </div>
                   <button
                     onClick={() => handleDownloadPDF(schedule, globalIndex)}
-                    className="px-4 py-2 glass border border-white/10 rounded-lg text-white hover:border-cyan-500/50 transition-all flex items-center gap-2"
+                    disabled={downloadingPDF === globalIndex || downloadingPDF === "all" || loading}
+                    className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-semibold shadow-lg shadow-cyan-500/50 hover:shadow-xl hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center gap-2"
+                    title="Download this schedule as PDF"
                   >
-                    <Download className="w-4 h-4" />
-                    Download PDF
+                    {downloadingPDF === globalIndex ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4" />
+                        Download PDF
+                      </>
+                    )}
                   </button>
                 </div>
 

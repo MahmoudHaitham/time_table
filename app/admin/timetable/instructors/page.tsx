@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { sessionsAPI } from "@/lib/api/timetable";
-import { Calendar, ArrowLeft, User, BookOpen, MapPin, Clock } from "lucide-react";
+import { Calendar, ArrowLeft, User, BookOpen, MapPin, Clock, Download } from "lucide-react";
+import jsPDF from "jspdf";
 
 interface InstructorSession {
   id: number;
@@ -16,6 +17,7 @@ interface InstructorSession {
     id: number;
     code: string;
     name: string;
+    is_elective?: boolean;
   };
   component: {
     id: number;
@@ -56,6 +58,7 @@ export default function InstructorSchedulePage() {
   const [loading, setLoading] = useState(false);
   const [loadingInstructors, setLoadingInstructors] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [downloadingPDF, setDownloadingPDF] = useState(false);
 
   useEffect(() => {
     // Check authentication
@@ -104,7 +107,277 @@ export default function InstructorSchedulePage() {
   };
 
   const getCellContent = (day: string, slot: number) => {
-    return sessions.filter(session => session.day === day && session.slot === slot);
+    const cellSessions = sessions.filter(session => session.day === day && session.slot === slot);
+    
+    // Deduplicate: Keep only one session per course code + component type combination
+    const seen = new Set<string>();
+    const uniqueSessions: InstructorSession[] = [];
+    
+    cellSessions.forEach(session => {
+      const key = `${session.course.code}_${session.component.component_type}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueSessions.push(session);
+      }
+    });
+    
+    return uniqueSessions;
+  };
+
+  // Color mapping matching site UI exactly (subtle, soft, embedded)
+  const getPDFColor = (componentType: string) => {
+    switch (componentType) {
+      case "L":
+        // Red - matching site: from-red-500/20 bg, border-red-500/50
+        return {
+          bg: [239, 68, 68, 0.2], // red-500 at 20% opacity
+          border: [239, 68, 68, 0.5], // red-500 at 50% opacity
+          text: [255, 255, 255], // White text
+        };
+      case "S":
+        // Blue - matching site: from-blue-500/20 bg, border-blue-500/50
+        return {
+          bg: [59, 130, 246, 0.2], // blue-500 at 20% opacity
+          border: [59, 130, 246, 0.5], // blue-500 at 50% opacity
+          text: [255, 255, 255], // White text
+        };
+      case "LB":
+        // Purple - matching site: from-purple-500/20 bg, border-purple-500/50
+        return {
+          bg: [168, 85, 247, 0.2], // purple-500 at 20% opacity
+          border: [168, 85, 247, 0.5], // purple-500 at 50% opacity
+          text: [255, 255, 255], // White text
+        };
+      default:
+        return {
+          bg: [239, 68, 68, 0.2],
+          border: [239, 68, 68, 0.5],
+          text: [255, 255, 255],
+        };
+    }
+  };
+
+  // Helper function to draw soft, embedded cell matching site UI
+  const drawSoftCell = (
+    doc: any,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    colors: any,
+    text: string[],
+    radius: number = 3
+  ) => {
+    // Dark base background (site uses dark background)
+    doc.setFillColor(3, 7, 18); // Same as page background
+    doc.roundedRect(x, y, width, height, radius, radius, "F");
+
+    // Subtle colored background with opacity (matching site: /20 opacity)
+    // jsPDF doesn't support RGBA directly, so we blend manually
+    const bgR = Math.floor(colors.bg[0] * colors.bg[3] + 3 * (1 - colors.bg[3]));
+    const bgG = Math.floor(colors.bg[1] * colors.bg[3] + 7 * (1 - colors.bg[3]));
+    const bgB = Math.floor(colors.bg[2] * colors.bg[3] + 18 * (1 - colors.bg[3]));
+    doc.setFillColor(bgR, bgG, bgB);
+    doc.roundedRect(x, y, width, height, radius, radius, "F");
+
+    // Soft border matching site (50% opacity, thin)
+    const borderR = Math.floor(colors.border[0] * colors.border[3] + 3 * (1 - colors.border[3]));
+    const borderG = Math.floor(colors.border[1] * colors.border[3] + 7 * (1 - colors.border[3]));
+    const borderB = Math.floor(colors.border[2] * colors.border[3] + 18 * (1 - colors.border[3]));
+    doc.setDrawColor(borderR, borderG, borderB);
+    doc.setLineWidth(0.5); // Thin, soft border
+    doc.roundedRect(x, y, width, height, radius, radius, "D");
+
+    // Text - course name bold and larger, other text normal
+    doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+    let textY = y + 5;
+    text.forEach((line, idx) => {
+      if (idx === 0) {
+        // Course name - larger and bold
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        textY += 1; // Slight adjustment for larger font
+      } else {
+        // Other lines (component type, term, class, room) - normal size
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "normal");
+      }
+      doc.text(line, x + 2, textY, { maxWidth: width - 4 });
+      textY += idx === 0 ? 6 : 4;
+    });
+  };
+
+  const handleDownloadPDF = async () => {
+    if (!selectedInstructor || sessions.length === 0) return;
+
+    try {
+      setDownloadingPDF(true);
+      
+      const doc = new jsPDF({
+        orientation: "landscape",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 15;
+      const tableWidth = pageWidth - (margin * 2);
+      const cellWidth = tableWidth / 5;
+      const cellHeight = 20;
+      const headerHeight = 15;
+      const rowHeight = cellHeight;
+
+      // Dark background for entire page (#030712)
+      doc.setFillColor(3, 7, 18);
+      doc.rect(0, 0, pageWidth, pageHeight, "F");
+
+      // Soft orange header with gradient effect (matching page theme)
+      for (let i = 0; i < 30; i++) {
+        const ratio = i / 30;
+        // Orange/amber gradient
+        const r = Math.floor(249 - ratio * 10);
+        const g = Math.floor(115 - ratio * 5);
+        const b = Math.floor(22 - ratio * 2);
+        doc.setFillColor(r, g, b);
+        doc.rect(0, i, pageWidth, 1, "F");
+      }
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(20);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Instructor Schedule`, margin, 15);
+      
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "normal");
+      doc.text(selectedInstructor, margin, 22);
+      
+      doc.setTextColor(200, 200, 200);
+      doc.setFontSize(10);
+      const uniqueCount = sessions.length;
+      doc.text(`${uniqueCount} session${uniqueCount !== 1 ? 's' : ''} scheduled`, margin, 28);
+
+      let yPos = 35;
+
+      // Soft table header matching site
+      doc.setFillColor(15, 23, 42);
+      doc.rect(margin, yPos, tableWidth, headerHeight, "F");
+      
+      // Subtle accent line (softer, thinner)
+      doc.setFillColor(249, 115, 22); // Orange accent
+      doc.rect(margin, yPos, 1.5, headerHeight, "F");
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text("Day / Slot", margin + 4, yPos + 10);
+      
+      SLOTS.forEach((slot, idx) => {
+        doc.text(`Slot ${slot}`, margin + cellWidth + (idx * cellWidth) + (cellWidth / 2), yPos + 10, {
+          align: "center",
+        });
+      });
+
+      yPos += headerHeight;
+
+      // Table rows
+      DAYS.forEach((day) => {
+        if (yPos + rowHeight > pageHeight - margin) {
+          doc.addPage();
+          doc.setFillColor(3, 7, 18);
+          doc.rect(0, 0, pageWidth, pageHeight, "F");
+          yPos = margin;
+          
+          doc.setFillColor(15, 23, 42);
+          doc.rect(margin, yPos, tableWidth, headerHeight, "F");
+          doc.setFillColor(249, 115, 22);
+          doc.rect(margin, yPos, 1.5, headerHeight, "F");
+          doc.setTextColor(255, 255, 255);
+          doc.setFontSize(11);
+          doc.setFont("helvetica", "bold");
+          doc.text("Day / Slot", margin + 4, yPos + 10);
+          SLOTS.forEach((slot, idx) => {
+            doc.text(`Slot ${slot}`, margin + cellWidth + (idx * cellWidth) + (cellWidth / 2), yPos + 10, {
+              align: "center",
+            });
+          });
+          yPos += headerHeight;
+        }
+
+        // Day cell - soft, embedded style
+        doc.setFillColor(15, 23, 42);
+        doc.rect(margin, yPos, cellWidth, rowHeight, "F");
+        
+        // Subtle accent line (thinner, softer)
+        doc.setFillColor(249, 115, 22);
+        doc.rect(margin, yPos, 1.5, rowHeight, "F");
+        
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.text(day, margin + 4, yPos + 12);
+
+        // Slot cells with soft styling
+        SLOTS.forEach((slot, slotIdx) => {
+          const cellSessions = getCellContent(day, slot);
+          const xPos = margin + cellWidth + (slotIdx * cellWidth);
+
+          if (cellSessions.length > 0) {
+            // Calculate height needed for multiple sessions
+            const sessionHeight = Math.max(rowHeight, cellSessions.length * 18);
+            
+            cellSessions.forEach((session, sessionIdx) => {
+              const sessionY = yPos + (sessionIdx * 18);
+              const colors = getPDFColor(session.component.component_type);
+              
+              const textLines: string[] = [
+                `${session.course.name} (${session.component.component_type})`
+              ];
+              textLines.push(`Term ${session.term.term_number} • ${session.class.class_code}`);
+              if (session.room) textLines.push(`Room: ${session.room}`);
+              if (session.course.is_elective) {
+                textLines.push("Elective");
+              }
+              
+              drawSoftCell(doc, xPos, sessionY, cellWidth, 17, colors, textLines);
+            });
+          } else {
+            // Empty cell - dark
+            doc.setFillColor(20, 20, 30);
+            doc.rect(xPos, yPos, cellWidth, rowHeight, "F");
+            doc.setDrawColor(40, 40, 50);
+            doc.setLineWidth(0.5);
+            doc.rect(xPos, yPos, cellWidth, rowHeight, "D");
+            doc.setTextColor(100, 100, 100);
+            doc.setFontSize(8);
+            doc.text("-", xPos + (cellWidth / 2), yPos + 12, { align: "center" });
+          }
+        });
+
+        yPos += rowHeight;
+      });
+
+      // Footer on all pages - dark with subtle text
+      const totalPages = doc.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(100, 100, 120);
+        doc.text(
+          `Page ${i} of ${totalPages}`,
+          pageWidth - margin,
+          pageHeight - 5,
+          { align: "right" }
+        );
+      }
+
+      doc.save(`Instructor_Schedule_${selectedInstructor.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`);
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      setError("Failed to generate PDF. Please try again.");
+    } finally {
+      setDownloadingPDF(false);
+    }
   };
 
   return (
@@ -192,18 +465,47 @@ export default function InstructorSchedulePage() {
             animate={{ opacity: 1, y: 0 }}
             className="glass border border-white/10 rounded-2xl p-6"
           >
-            <div className="flex items-center gap-4 mb-6">
-              <div className="p-4 bg-gradient-to-br from-orange-500/30 to-amber-600/30 rounded-xl shadow-lg shadow-orange-500/20">
-                <Calendar className="w-7 h-7 text-orange-400" />
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-4">
+                <div className="p-4 bg-gradient-to-br from-orange-500/30 to-amber-600/30 rounded-xl shadow-lg shadow-orange-500/20">
+                  <Calendar className="w-7 h-7 text-orange-400" />
+                </div>
+                <div>
+                  <h2 className="text-3xl font-bold text-white mb-2">
+                    Schedule for {selectedInstructor}
+                  </h2>
+                  <p className="text-gray-400">
+                    {(() => {
+                      // Count unique sessions (deduplicated by course code + component type + day + slot)
+                      const uniqueKeys = new Set<string>();
+                      sessions.forEach(session => {
+                        const key = `${session.course.code}_${session.component.component_type}_${session.day}_${session.slot}`;
+                        uniqueKeys.add(key);
+                      });
+                      const uniqueCount = uniqueKeys.size;
+                      return `${uniqueCount} session${uniqueCount !== 1 ? 's' : ''} scheduled`;
+                    })()}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-3xl font-bold text-white mb-2">
-                  Schedule for {selectedInstructor}
-                </h2>
-                <p className="text-gray-400">
-                  {sessions.length} session{sessions.length !== 1 ? 's' : ''} scheduled
-                </p>
-              </div>
+              <button
+                onClick={handleDownloadPDF}
+                disabled={downloadingPDF || !selectedInstructor || sessions.length === 0}
+                className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 text-white rounded-lg font-semibold shadow-lg shadow-orange-500/50 hover:shadow-xl hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center gap-2"
+                title="Download instructor schedule as PDF"
+              >
+                {downloadingPDF ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    Download PDF
+                  </>
+                )}
+              </button>
             </div>
 
             {loading ? (
@@ -250,8 +552,15 @@ export default function InstructorSchedulePage() {
                                       animate={{ opacity: 1, scale: 1 }}
                                       className={`text-xs p-2 ${getSlotColor(session.component.component_type)} rounded-lg backdrop-blur-sm border`}
                                     >
-                                      <div className="font-semibold text-white">
-                                        {session.course.code} ({session.component.component_type})
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <div className="font-semibold text-white">
+                                          {session.course.code} ({session.component.component_type})
+                                        </div>
+                                        {session.course.is_elective && (
+                                          <span className="px-1.5 py-0.5 bg-purple-500/30 text-purple-300 border border-purple-500/50 rounded text-[10px] font-semibold">
+                                            Elective
+                                          </span>
+                                        )}
                                       </div>
                                       <div className="text-gray-200 text-xs mt-1">
                                         {session.course.name}

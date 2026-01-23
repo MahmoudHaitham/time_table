@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { otherDeptAPI } from "@/lib/api/timetable";
+import { otherDeptAPI, sessionsAPI } from "@/lib/api/timetable";
 import { ArrowLeft, Plus, BookOpen, Calendar, MapPin, User, XCircle, Trash2, Save } from "lucide-react";
 import AlertModal from "@/components/ui/AlertModal";
 import ConfirmModal from "@/components/ui/ConfirmModal";
@@ -57,6 +57,9 @@ export default function CoursesForOtherDeptPage() {
   const [selectedCell, setSelectedCell] = useState<{ day: string; slot: number; component: Component } | null>(null);
   const [showSessionModal, setShowSessionModal] = useState(false);
   const [sessionData, setSessionData] = useState({ room: "", instructor: "" });
+  const [instructorList, setInstructorList] = useState<string[]>([]);
+  const [showInstructorSuggestions, setShowInstructorSuggestions] = useState(false);
+  const [filteredInstructors, setFilteredInstructors] = useState<string[]>([]);
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; type: "success" | "error" | "warning" | "info"; title: string; message: string }>({
     isOpen: false,
     type: "success",
@@ -77,7 +80,74 @@ export default function CoursesForOtherDeptPage() {
       return;
     }
     loadCourses();
+    loadInstructors();
   }, [router]);
+
+  const loadInstructors = async () => {
+    try {
+      // Get instructors from database (all unique instructors from all sessions)
+      const dbResponse = await sessionsAPI.getAllInstructors();
+      const dbInstructors = dbResponse.data || [];
+      
+      // Get instructors from localStorage (user-added ones)
+      const savedInstructors = localStorage.getItem("instructors_list");
+      const savedList = savedInstructors ? JSON.parse(savedInstructors) : [];
+      
+      // Combine and deduplicate (database instructors take priority)
+      const allInstructors = [...new Set([...dbInstructors, ...savedList])].sort();
+      setInstructorList(allInstructors);
+      setFilteredInstructors(allInstructors);
+    } catch (err) {
+      console.error("Failed to load instructors:", err);
+      // Fallback to localStorage only
+      const savedInstructors = localStorage.getItem("instructors_list");
+      const savedList = savedInstructors ? JSON.parse(savedInstructors) : [];
+      setInstructorList(savedList);
+      setFilteredInstructors(savedList);
+    }
+  };
+
+  // Filter instructors based on input
+  const handleInstructorChange = (value: string) => {
+    setSessionData({ ...sessionData, instructor: value });
+    if (value.trim()) {
+      const filtered = instructorList.filter(inst => 
+        inst.toLowerCase().includes(value.toLowerCase())
+      );
+      setFilteredInstructors(filtered);
+      setShowInstructorSuggestions(true);
+    } else {
+      setFilteredInstructors(instructorList);
+      setShowInstructorSuggestions(false);
+    }
+  };
+
+  // Save new instructor to localStorage
+  const handleInstructorBlur = () => {
+    const instructorValue = sessionData.instructor.trim();
+    if (instructorValue) {
+      // Extract individual instructors from comma-separated string
+      const instructors = instructorValue.split(',').map(i => i.trim()).filter(i => i);
+      const updatedList = [...new Set([...instructorList, ...instructors])].sort();
+      setInstructorList(updatedList);
+      localStorage.setItem("instructors_list", JSON.stringify(updatedList));
+    }
+    setTimeout(() => setShowInstructorSuggestions(false), 200);
+  };
+
+  const selectInstructor = (name: string) => {
+    const currentInstructors = sessionData.instructor.trim() 
+      ? sessionData.instructor.split(',').map(i => i.trim()).filter(i => i) 
+      : [];
+    
+    if (!currentInstructors.includes(name)) {
+      setSessionData({ 
+        ...sessionData, 
+        instructor: currentInstructors.length > 0 ? `${sessionData.instructor}, ${name}` : name 
+      });
+    }
+    setShowInstructorSuggestions(false);
+  };
 
   const loadCourses = async () => {
     try {
@@ -130,21 +200,95 @@ export default function CoursesForOtherDeptPage() {
 
     try {
       setError(null);
-      await otherDeptAPI.upsertSession(selectedCell.component.id, {
+      const response = await otherDeptAPI.upsertSession(selectedCell.component.id, {
         day: selectedCell.day,
         slot: selectedCell.slot,
         room: sessionData.room || undefined,
         instructor: sessionData.instructor || undefined,
       });
+      
+      // Update local state instead of reloading
+      setCourses(prevCourses => {
+        return prevCourses.map(course => {
+          if (course.id === selectedCourse.id) {
+            return {
+              ...course,
+              components: course.components.map(comp => {
+                if (comp.id === selectedCell.component.id) {
+                  const existingSessionIndex = comp.sessions.findIndex(
+                    s => s.day === selectedCell.day && s.slot === selectedCell.slot
+                  );
+                  
+                  const updatedSession = {
+                    id: response.data?.id || comp.sessions[existingSessionIndex]?.id || Date.now(),
+                    day: selectedCell.day,
+                    slot: selectedCell.slot,
+                    room: sessionData.room || null,
+                    instructor: sessionData.instructor || null,
+                  };
+                  
+                  if (existingSessionIndex >= 0) {
+                    // Update existing session
+                    const newSessions = [...comp.sessions];
+                    newSessions[existingSessionIndex] = updatedSession;
+                    return { ...comp, sessions: newSessions };
+                  } else {
+                    // Add new session
+                    return { ...comp, sessions: [...comp.sessions, updatedSession] };
+                  }
+                }
+                return comp;
+              }),
+            };
+          }
+          return course;
+        });
+      });
+      
+      // Update selectedCourse state if it's the current one
+      if (selectedCourse) {
+        setSelectedCourse(prevCourse => {
+          if (!prevCourse || prevCourse.id !== selectedCourse.id) return prevCourse;
+          
+          return {
+            ...prevCourse,
+            components: prevCourse.components.map(comp => {
+              if (comp.id === selectedCell.component.id) {
+                const existingSessionIndex = comp.sessions.findIndex(
+                  s => s.day === selectedCell.day && s.slot === selectedCell.slot
+                );
+                
+                const updatedSession = {
+                  id: response.data?.id || comp.sessions[existingSessionIndex]?.id || Date.now(),
+                  day: selectedCell.day,
+                  slot: selectedCell.slot,
+                  room: sessionData.room || null,
+                  instructor: sessionData.instructor || null,
+                };
+                
+                if (existingSessionIndex >= 0) {
+                  const newSessions = [...comp.sessions];
+                  newSessions[existingSessionIndex] = updatedSession;
+                  return { ...comp, sessions: newSessions };
+                } else {
+                  return { ...comp, sessions: [...comp.sessions, updatedSession] };
+                }
+              }
+              return comp;
+            }),
+          };
+        });
+      }
+      
       setShowSessionModal(false);
       setSelectedCell(null);
+      setSessionData({ room: "", instructor: "" });
       setAlertModal({
         isOpen: true,
         type: "success",
         title: "Success",
         message: "Session saved successfully",
       });
-      loadCourses();
     } catch (err: any) {
       setError(err.message || "Failed to save session");
     }
@@ -156,15 +300,61 @@ export default function CoursesForOtherDeptPage() {
     try {
       setError(null);
       await otherDeptAPI.deleteSession(selectedCell.component.id, selectedCell.day, selectedCell.slot);
+      
+      // Update local state instead of reloading
+      setCourses(prevCourses => {
+        return prevCourses.map(course => {
+          if (course.id === selectedCourse?.id) {
+            return {
+              ...course,
+              components: course.components.map(comp => {
+                if (comp.id === selectedCell.component.id) {
+                  return {
+                    ...comp,
+                    sessions: comp.sessions.filter(
+                      s => !(s.day === selectedCell.day && s.slot === selectedCell.slot)
+                    ),
+                  };
+                }
+                return comp;
+              }),
+            };
+          }
+          return course;
+        });
+      });
+      
+      // Update selectedCourse state
+      if (selectedCourse) {
+        setSelectedCourse(prevCourse => {
+          if (!prevCourse || prevCourse.id !== selectedCourse.id) return prevCourse;
+          
+          return {
+            ...prevCourse,
+            components: prevCourse.components.map(comp => {
+              if (comp.id === selectedCell.component.id) {
+                return {
+                  ...comp,
+                  sessions: comp.sessions.filter(
+                    s => !(s.day === selectedCell.day && s.slot === selectedCell.slot)
+                  ),
+                };
+              }
+              return comp;
+            }),
+          };
+        });
+      }
+      
       setShowSessionModal(false);
       setSelectedCell(null);
+      setSessionData({ room: "", instructor: "" });
       setAlertModal({
         isOpen: true,
         type: "success",
         title: "Success",
         message: "Session deleted successfully",
       });
-      loadCourses();
     } catch (err: any) {
       setError(err.message || "Failed to delete session");
     }
@@ -390,9 +580,24 @@ export default function CoursesForOtherDeptPage() {
                                 >
                                   {session ? (
                                     <div className={`p-2 rounded-lg ${getSlotColor(component.component_type)}`}>
-                                      <div className="text-xs font-semibold text-white">
-                                        {session.instructor || "No instructor"}
-                                      </div>
+                                      {session.instructor ? (
+                                        <div className="text-xs mt-1 space-y-1">
+                                          {/* Show multiple instructors, each on a new line */}
+                                          {session.instructor.split(',').map((inst: string, instIdx: number) => {
+                                            const trimmed = inst.trim();
+                                            return trimmed ? (
+                                              <div key={instIdx} className="flex items-center gap-1">
+                                                <User className="w-3 h-3 flex-shrink-0 text-green-400" />
+                                                <span className="text-white font-semibold">{trimmed}</span>
+                                              </div>
+                                            ) : null;
+                                          })}
+                                        </div>
+                                      ) : (
+                                        <div className="text-xs font-semibold text-white">
+                                          No instructor
+                                        </div>
+                                      )}
                                       {session.room && (
                                         <div className="text-xs text-gray-300 mt-1 flex items-center gap-1">
                                           <MapPin className="w-3 h-3" />
@@ -501,15 +706,69 @@ export default function CoursesForOtherDeptPage() {
             <p className="text-gray-400 mb-4">
               {selectedCell.day} - Slot {selectedCell.slot}
             </p>
-            <div className="mb-4">
-              <label className="block text-gray-300 mb-2">Instructor</label>
-              <input
-                type="text"
-                value={sessionData.instructor}
-                onChange={(e) => setSessionData({ ...sessionData, instructor: e.target.value })}
-                className="w-full px-4 py-2 glass border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all"
-                placeholder="Enter instructor name"
-              />
+            <div className="mb-4 relative">
+              <label className="block text-gray-300 mb-2 flex items-center gap-2">
+                <User className="w-4 h-4" />
+                Instructors (optional)
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={sessionData.instructor}
+                  onChange={(e) => handleInstructorChange(e.target.value)}
+                  onFocus={() => {
+                    if (sessionData.instructor.trim()) {
+                      setShowInstructorSuggestions(true);
+                    }
+                  }}
+                  onBlur={handleInstructorBlur}
+                  list="instructors-list"
+                  className="w-full px-4 py-2 glass border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all"
+                  placeholder="Type instructor names separated by commas (e.g., Dr. Smith, Dr. Jones)"
+                  autoComplete="off"
+                />
+                <datalist id="instructors-list">
+                  {instructorList.map((inst, idx) => (
+                    <option key={idx} value={inst} />
+                  ))}
+                </datalist>
+                
+                {/* Custom dropdown suggestions */}
+                {showInstructorSuggestions && filteredInstructors.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 glass border border-white/10 rounded-lg shadow-2xl max-h-48 overflow-y-auto">
+                    {filteredInstructors.map((inst, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => selectInstructor(inst)}
+                        className="w-full text-left px-4 py-2 text-white hover:bg-white/10 transition-colors border-b border-white/5 last:border-b-0"
+                      >
+                        {inst}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {instructorList.length > 0 && (
+                <p className="text-gray-500 text-xs mt-1">
+                  {instructorList.length} instructor(s) available. Type to search or add multiple instructors separated by commas.
+                </p>
+              )}
+              {sessionData.instructor && (
+                <div className="mt-2 p-2 glass border border-green-500/30 rounded-lg">
+                  <p className="text-xs text-green-400 font-semibold mb-1">Instructors to add:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {sessionData.instructor.split(',').map((inst: string, idx: number) => {
+                      const trimmed = inst.trim();
+                      return trimmed ? (
+                        <span key={idx} className="px-2 py-1 bg-green-500/20 text-green-300 rounded text-xs">
+                          {trimmed}
+                        </span>
+                      ) : null;
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="mb-6">
               <label className="block text-gray-300 mb-2">Room</label>

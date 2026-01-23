@@ -702,6 +702,7 @@ export const deleteSession = async (req: Request, res: Response) => {
 
 /**
  * Get all unique instructor names from database
+ * Splits comma-separated instructor names into individual instructors
  */
 export const getAllInstructors = async (req: Request, res: Response) => {
   try {
@@ -716,11 +717,20 @@ export const getAllInstructors = async (req: Request, res: Response) => {
       .orderBy("session.instructor", "ASC")
       .getRawMany();
     
-    // Extract instructor names and filter out null/empty
-    const instructors = sessions
-      .map((s: any) => s.instructor)
-      .filter((inst: string | null) => inst && inst.trim() !== "")
-      .sort();
+    // Extract instructor names, split comma-separated ones, and get unique set
+    const instructorSet = new Set<string>();
+    
+    sessions.forEach((s: any) => {
+      const instructorStr = s.instructor?.trim();
+      if (instructorStr) {
+        // Split by comma and add each individual instructor
+        const instructors = instructorStr.split(',').map((inst: string) => inst.trim()).filter((inst: string) => inst);
+        instructors.forEach((inst: string) => instructorSet.add(inst));
+      }
+    });
+    
+    // Convert to sorted array
+    const instructors = Array.from(instructorSet).sort();
     
     return res.json({
       success: true,
@@ -738,6 +748,7 @@ export const getAllInstructors = async (req: Request, res: Response) => {
 /**
  * Get all instructors with their sessions organized by day and slot (for admin view)
  * Returns data in format suitable for table display
+ * Splits comma-separated instructor names so each instructor gets their own row
  */
 export const getAllInstructorsSchedule = async (req: Request, res: Response) => {
   try {
@@ -761,30 +772,40 @@ export const getAllInstructorsSchedule = async (req: Request, res: Response) => 
       },
     });
 
-    // Group sessions by instructor
+    // Group sessions by individual instructor (split comma-separated names)
     const instructorMap = new Map<string, Array<{
       day: string;
       slot: number;
       courseName: string;
       courseCode: string;
+      courseId: number;
+      isElective: boolean;
       instructor: string;
     }>>();
 
     allSessions.forEach(session => {
       if (!session.instructor || !session.instructor.trim()) return;
 
-      const instructor = session.instructor.trim();
-      if (!instructorMap.has(instructor)) {
-        instructorMap.set(instructor, []);
-      }
-
+      // Split comma-separated instructor names
+      const instructorNames = session.instructor.split(',').map((inst: string) => inst.trim()).filter((inst: string) => inst);
+      
       const course = session.component.classCourse.course;
-      instructorMap.get(instructor)!.push({
-        day: session.day,
-        slot: session.slot,
-        courseName: course.name,
-        courseCode: course.code,
-        instructor: instructor,
+      
+      // Add session to each individual instructor
+      instructorNames.forEach((instructor: string) => {
+        if (!instructorMap.has(instructor)) {
+          instructorMap.set(instructor, []);
+        }
+
+        instructorMap.get(instructor)!.push({
+          day: session.day,
+          slot: session.slot,
+          courseName: course.name,
+          courseCode: course.code,
+          courseId: course.id,
+          isElective: course.is_elective || false,
+          instructor: instructor,
+        });
       });
     });
 
@@ -793,7 +814,7 @@ export const getAllInstructorsSchedule = async (req: Request, res: Response) => 
     const slots = [1, 2, 3, 4];
 
     const result = Array.from(instructorMap.entries()).map(([instructorName, sessions]) => {
-      const schedule: Record<string, string[]> = {};
+      const schedule: Record<string, Array<{ course: string; isElective: boolean }>> = {};
       
       // Initialize all day/slot combinations
       days.forEach(day => {
@@ -807,8 +828,11 @@ export const getAllInstructorsSchedule = async (req: Request, res: Response) => 
       sessions.forEach(session => {
         const key = `${session.day}_${session.slot}`;
         if (schedule[key]) {
-          // Format: "Course Code - Course Name"
-          schedule[key].push(`${session.courseCode} - ${session.courseName}`);
+          // Format: "Course Code - Course Name" with elective flag
+          schedule[key].push({
+            course: `${session.courseCode} - ${session.courseName}`,
+            isElective: session.isElective,
+          });
         }
       });
 
@@ -836,6 +860,7 @@ export const getAllInstructorsSchedule = async (req: Request, res: Response) => 
 
 /**
  * Get all sessions for a specific instructor
+ * Matches sessions where the instructor name appears (including in comma-separated lists)
  */
 export const getInstructorSessions = async (req: Request, res: Response) => {
   try {
@@ -849,24 +874,31 @@ export const getInstructorSessions = async (req: Request, res: Response) => {
     }
 
     const sessionRepo = AppDataSource.getRepository(Session);
+    const trimmedName = instructorName.trim();
     
-    // Get all sessions for this instructor with full relations
-    const sessions = await sessionRepo.find({
-      where: {
-        instructor: instructorName.trim(),
-      },
-      relations: [
-        "component",
-        "component.classCourse",
-        "component.classCourse.course",
-        "component.classCourse.class",
-        "component.classCourse.class.term",
-      ],
-      order: {
-        day: "ASC",
-        slot: "ASC",
-      },
-    });
+    // Get all sessions where instructor matches exactly OR appears in comma-separated list
+    // Using LIKE to match instructor name anywhere in the instructor field
+    const sessions = await sessionRepo
+      .createQueryBuilder("session")
+      .leftJoinAndSelect("session.component", "component")
+      .leftJoinAndSelect("component.classCourse", "classCourse")
+      .leftJoinAndSelect("classCourse.course", "course")
+      .leftJoinAndSelect("classCourse.class", "class")
+      .leftJoinAndSelect("class.term", "term")
+      .where("session.instructor IS NOT NULL")
+      .andWhere("session.instructor != ''")
+      .andWhere(
+        "(session.instructor = :exactName OR session.instructor LIKE :likeNameStart OR session.instructor LIKE :likeNameMiddle OR session.instructor LIKE :likeNameEnd)",
+        {
+          exactName: trimmedName,
+          likeNameStart: `${trimmedName},%`,
+          likeNameMiddle: `%, ${trimmedName},%`,
+          likeNameEnd: `%,${trimmedName}`,
+        }
+      )
+      .orderBy("session.day", "ASC")
+      .addOrderBy("session.slot", "ASC")
+      .getMany();
 
     // Format the response with course and class information
     const formattedSessions = sessions.map(session => ({
@@ -874,11 +906,12 @@ export const getInstructorSessions = async (req: Request, res: Response) => {
       day: session.day,
       slot: session.slot,
       room: session.room,
-      instructor: session.instructor,
+      instructor: trimmedName, // Return the searched instructor name, not the stored comma-separated string
       course: {
         id: session.component.classCourse.course.id,
         code: session.component.classCourse.course.code,
         name: session.component.classCourse.course.name,
+        is_elective: session.component.classCourse.course.is_elective || false,
       },
       component: {
         id: session.component.id,

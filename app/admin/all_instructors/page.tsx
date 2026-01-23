@@ -60,7 +60,7 @@ export default function AllInstructorsPage() {
     }
   }, [searchQuery, instructorsSchedule]);
 
-  const getCellContent = (instructor: InstructorSchedule, day: string, slot: number): string[] => {
+  const getCellContent = (instructor: InstructorSchedule, day: string, slot: number): Array<{ course: string; isElective: boolean }> => {
     const key = `${day}_${slot}`;
     return instructor.schedule[key] || [];
   };
@@ -219,15 +219,22 @@ export default function AllInstructorsPage() {
                             >
                               {courses.length > 0 ? (
                                 <div className="space-y-1">
-                                  {courses.map((course, courseIdx) => (
+                                  {courses.map((courseItem, courseIdx) => (
                                     <motion.div
-                                      key={`${course}-${courseIdx}`}
+                                      key={`${courseItem.course}-${courseIdx}`}
                                       initial={{ opacity: 0, scale: 0.95 }}
                                       animate={{ opacity: 1, scale: 1 }}
                                       className="text-xs p-2 bg-gradient-to-br from-purple-500/20 to-pink-600/20 border border-purple-500/30 rounded-lg backdrop-blur-sm"
                                     >
-                                      <div className="font-semibold text-white break-words">
-                                        {course}
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <div className="font-semibold text-white break-words">
+                                          {courseItem.course}
+                                        </div>
+                                        {courseItem.isElective && (
+                                          <span className="px-1.5 py-0.5 bg-purple-500/40 text-purple-200 border border-purple-400/50 rounded text-[10px] font-semibold whitespace-nowrap">
+                                            Elective
+                                          </span>
+                                        )}
                                       </div>
                                       <div className="text-purple-200 text-xs mt-1">
                                         {instructor.instructor}
