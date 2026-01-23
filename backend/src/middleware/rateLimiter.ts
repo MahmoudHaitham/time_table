@@ -2,6 +2,8 @@
  * Rate limiting middleware for API endpoints
  * Prevents abuse and ensures fair resource usage for high concurrent users
  * Database pool supports up to 100 concurrent connections
+ * 
+ * PRODUCTION NOTE: For multi-server deployments, use Redis-based rate limiting
  */
 
 import { Request, Response, NextFunction } from "express";
@@ -29,7 +31,7 @@ class RateLimiter {
    */
   private getClientId(req: Request): string {
     // Try to get user ID from auth token if available
-    const userId = (req as any).user?.id;
+    const userId = (req as any).user?.userId;
     if (userId) {
       return `user:${userId}`;
     }
@@ -80,10 +82,32 @@ class RateLimiter {
       // Check if limit exceeded
       if (entry.count > maxRequests) {
         const retryAfter = Math.ceil((entry.resetTime - now) / 1000);
+        
+        // Log rate limit hit for monitoring
+        console.warn(`[RATE_LIMIT] ${clientId} exceeded limit on ${req.path}`, {
+          ip: req.ip,
+          userId: (req as any).user?.userId,
+          path: req.path,
+          method: req.method,
+          limit: maxRequests,
+          window: Math.ceil(windowMs / 1000),
+          retryAfter,
+        });
+
+        // User-friendly error messages based on endpoint
+        let message = `Rate limit exceeded. Please try again in ${retryAfter} seconds.`;
+        if (req.path.includes('/login')) {
+          message = `Too many login attempts. Please wait ${retryAfter} seconds before trying again.`;
+        } else if (req.path.includes('/refresh')) {
+          message = `Too many token refresh requests. Please wait ${retryAfter} seconds.`;
+        }
+
         return res.status(429).json({
           success: false,
-          message: `Rate limit exceeded. Please try again in ${retryAfter} seconds.`,
+          message,
           retryAfter,
+          limit: maxRequests,
+          window: Math.ceil(windowMs / 1000), // Window in seconds
         });
       }
 
@@ -91,6 +115,7 @@ class RateLimiter {
       res.setHeader('X-RateLimit-Limit', maxRequests.toString());
       res.setHeader('X-RateLimit-Remaining', Math.max(0, maxRequests - entry.count).toString());
       res.setHeader('X-RateLimit-Reset', new Date(entry.resetTime).toISOString());
+      res.setHeader('X-RateLimit-Window', Math.ceil(windowMs / 1000).toString());
 
       next();
     };
@@ -102,8 +127,17 @@ export const rateLimiter = new RateLimiter();
 
 /**
  * Pre-configured rate limiters for different endpoints
+ * 
+ * PRODUCTION RECOMMENDATIONS:
+ * - Use Redis for distributed rate limiting (multiple servers)
+ * - Adjust limits based on actual traffic patterns
+ * - Monitor rate limit hits and adjust accordingly
  */
 export const rateLimiters = {
+  // Login: 10 attempts per 15 minutes (increased from 5 for better UX)
+  // Still prevents brute force while allowing legitimate retries
+  login: rateLimiter.createLimiter(10, 15 * 60 * 1000),
+  
   // General API: 100 requests per minute
   general: rateLimiter.createLimiter(100, 60 * 1000),
   
@@ -115,4 +149,7 @@ export const rateLimiters = {
   
   // Public endpoints: More lenient (200 requests per minute)
   public: rateLimiter.createLimiter(200, 60 * 1000),
+  
+  // Refresh token: 20 requests per minute (prevents abuse)
+  refreshToken: rateLimiter.createLimiter(20, 60 * 1000),
 };

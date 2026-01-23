@@ -64,11 +64,12 @@ async function startServer() {
     }, 30000); // Check every 30 seconds
 
     const PORT = process.env.PORT || 5000;
-    const HOST = process.env.HOST || "localhost";
-
-    app.listen(PORT, () => {
-      console.log(`🟢 Server running at: http://${HOST}:${PORT}`);
-      console.log(`📚 API available at: http://${HOST}:${PORT}/api`);
+    // Listen on all interfaces (both IPv4 and IPv6)
+    // Using undefined makes Node.js listen on both IPv4 (0.0.0.0) and IPv6 (::)
+    app.listen(PORT, undefined, () => {
+      console.log(`🟢 Server running at: http://localhost:${PORT}`);
+      console.log(`📚 API available at: http://localhost:${PORT}/api`);
+      console.log(`🌐 Listening on all interfaces (IPv4 and IPv6) on port ${PORT}`);
     });
 
     // ✅ Handle database connection errors from the pool

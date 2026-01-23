@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { termsAPI } from "@/lib/api/timetable";
 import Link from "next/link";
 import { LogOut, Plus, BookOpen, Trash2, User } from "lucide-react";
+import { useAdminAuth } from "../auth-check";
 
 interface Term {
   id: number;

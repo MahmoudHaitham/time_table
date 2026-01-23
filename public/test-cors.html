@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CORS Test - Direct Browser Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
+        button { padding: 10px 20px; font-size: 16px; margin: 10px 0; cursor: pointer; }
+        pre { background: #f5f5f5; padding: 15px; border-radius: 5px; overflow-x: auto; }
+        .success { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>CORS Direct Browser Test</h1>
+    <p>This page tests CORS directly from the browser, bypassing Next.js.</p>
+    
+    <button onclick="testHealth()">Test /health</button>
+    <button onclick="testAPI()">Test /api/test</button>
+    <button onclick="clearCache()">Clear Cache & Retry</button>
+    
+    <h2>Results:</h2>
+    <pre id="results">Click a button to test...</pre>
+    
+    <script>
+        const baseURL = "http://localhost:5000";
+        const results = document.getElementById("results");
+        
+        function log(message) {
+            results.textContent += message + "\n";
+            console.log(message);
+        }
+        
+        function clearResults() {
+            results.textContent = "";
+        }
+        
+        async function testHealth() {
+            clearResults();
+            log("Testing /health endpoint...\n");
+            
+            try {
+                const response = await fetch(`${baseURL}/health?t=${Date.now()}`, {
+                    method: "GET",
+                    mode: "cors",
+                    credentials: "include",
+                    cache: "no-cache",
+                });
+                
+                log(`Status: ${response.status} ${response.statusText}`);
+                log(`CORS Origin: ${response.headers.get("Access-Control-Allow-Origin") || "MISSING"}`);
+                log(`CORS Credentials: ${response.headers.get("Access-Control-Allow-Credentials") || "MISSING"}`);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    log(`\n✅ SUCCESS!\n${JSON.stringify(data, null, 2)}`);
+                } else {
+                    log(`\n❌ Failed: ${response.status}`);
+                }
+            } catch (error) {
+                log(`\n❌ ERROR: ${error.message}`);
+                log(`Error name: ${error.name}`);
+                log(`\n💡 This is a CORS or network error.`);
+                log(`💡 Check browser console (F12) for more details.`);
+            }
+        }
+        
+        async function testAPI() {
+            clearResults();
+            log("Testing /api/test endpoint...\n");
+            
+            try {
+                const response = await fetch(`${baseURL}/api/test?t=${Date.now()}`, {
+                    method: "GET",
+                    mode: "cors",
+                    credentials: "include",
+                    cache: "no-cache",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                });
+                
+                log(`Status: ${response.status} ${response.statusText}`);
+                log(`CORS Origin: ${response.headers.get("Access-Control-Allow-Origin") || "MISSING"}`);
+                log(`CORS Credentials: ${response.headers.get("Access-Control-Allow-Credentials") || "MISSING"}`);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    log(`\n✅ SUCCESS!\n${JSON.stringify(data, null, 2)}`);
+                } else {
+                    log(`\n❌ Failed: ${response.status}`);
+                }
+            } catch (error) {
+                log(`\n❌ ERROR: ${error.message}`);
+                log(`Error name: ${error.name}`);
+                log(`\n💡 This is a CORS or network error.`);
+                log(`💡 Check browser console (F12) for more details.`);
+            }
+        }
+        
+        function clearCache() {
+            clearResults();
+            log("Clearing cache...\n");
+            if ("caches" in window) {
+                caches.keys().then(names => {
+                    names.forEach(name => {
+                        caches.delete(name);
+                    });
+                    log("✅ Cache cleared!");
+                    log("\nNow try testing again.");
+                });
+            } else {
+                log("⚠️ Cache API not available. Try:");
+                log("1. Hard refresh: Ctrl+Shift+R (Windows) or Cmd+Shift+R (Mac)");
+                log("2. Clear browser cache manually");
+                log("3. Try incognito/private mode");
+            }
+        }
+        
+        // Log current origin
+        log(`Current page origin: ${window.location.origin}`);
+        log(`Testing backend at: ${baseURL}\n`);
+    </script>
+</body>
+</html>

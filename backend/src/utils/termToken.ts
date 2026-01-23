@@ -5,8 +5,14 @@
 
 import * as crypto from "crypto";
 
-// Secret key for token generation (should be in environment variable in production)
-const TERM_TOKEN_SECRET = process.env.TERM_TOKEN_SECRET || "your-secret-key-change-in-production-2024";
+// Require TERM_TOKEN_SECRET to be set in environment variables
+const TERM_TOKEN_SECRET = process.env.TERM_TOKEN_SECRET;
+if (!TERM_TOKEN_SECRET || TERM_TOKEN_SECRET.length < 32) {
+  throw new Error(
+    "TERM_TOKEN_SECRET environment variable must be set and be at least 32 characters long. " +
+    "This is required for security. Please set it in your .env file."
+  );
+}
 
 /**
  * Encode a term ID into a secure token

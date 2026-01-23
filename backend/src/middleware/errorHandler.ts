@@ -6,15 +6,36 @@ export const errorHandler = (
   res: Response,
   next: NextFunction
 ) => {
-  console.error("Error:", err);
+  // Log full error details server-side
+  console.error("Error:", {
+    message: err.message,
+    stack: err.stack,
+    status: err.status || err.statusCode,
+    path: req.path,
+    method: req.method,
+  });
 
   const status = err.status || err.statusCode || 500;
-  const message = err.message || "Internal server error";
+  
+  // Don't expose internal error details in production
+  const isDevelopment = process.env.NODE_ENV === "development";
+  
+  // Generic error messages for production
+  let message = "Internal server error";
+  if (isDevelopment) {
+    message = err.message || "Internal server error";
+  } else if (status < 500) {
+    // Client errors (4xx) can be more specific
+    message = err.message || "Request failed";
+  }
 
   return res.status(status).json({
     success: false,
     message,
-    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
+    ...(isDevelopment && { 
+      stack: err.stack,
+      details: err.message,
+    }),
   });
 };
 

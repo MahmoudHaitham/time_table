@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import MagicBackground from "@/components/MagicBackground";
@@ -14,6 +14,21 @@ export default function LoginPage() {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [redirectTo, setRedirectTo] = useState<string | null>(null);
+
+  // Get redirect parameter from URL using window.location (more reliable)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const redirect = params.get("redirect");
+      if (redirect) {
+        console.log(`[Login] Found redirect parameter: ${redirect}`);
+        setRedirectTo(redirect);
+      } else {
+        console.log("[Login] No redirect parameter found, will default to /admin/timetable");
+      }
+    }
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,21 +38,40 @@ export default function LoginPage() {
     try {
       const { authAPI } = await import("@/lib/api/auth");
       
+      console.log("[Login] Attempting login...");
       const data = await authAPI.login(formData.registration_number, formData.password);
+      console.log("[Login] Login successful:", data);
 
-      // Store token
-      if (data.data?.token) {
-        localStorage.setItem("auth_token", data.data.token);
-        localStorage.setItem("user", JSON.stringify(data.data.user));
+      // Verify token was stored
+      const token = typeof window !== "undefined" ? sessionStorage.getItem("auth_token") : null;
+      if (!token) {
+        throw new Error("Token was not stored. Please try again.");
       }
+      console.log("[Login] Token stored successfully in sessionStorage and cookie");
+      
+      // Small delay to ensure cookie is set before redirect
+      await new Promise(resolve => setTimeout(resolve, 100));
 
-      // Redirect to admin dashboard
-      router.push("/admin/timetable");
+      // Token is stored in sessionStorage by authAPI.login
+      // Refresh token is in httpOnly cookie set by backend
+
+      // Redirect to the intended page or default to admin dashboard
+      // Also check URL params one more time in case state wasn't updated
+      const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+      const finalRedirect = redirectTo || urlParams?.get("redirect") || "/admin/timetable";
+      
+      console.log(`[Login] Success! Token stored. Redirecting to: ${finalRedirect}`);
+      console.log(`[Login] redirectTo state: ${redirectTo}, URL param: ${urlParams?.get("redirect")}`);
+      
+      // Use window.location.href for immediate, reliable redirect
+      // This ensures the page fully reloads and middleware can verify the token
+      window.location.href = finalRedirect;
     } catch (err: any) {
-      setError(err.message || "An error occurred");
-    } finally {
+      console.error("[Login] Login error:", err);
+      setError(err.message || "An error occurred. Please check if the backend is running.");
       setLoading(false);
     }
+    // Note: Don't set loading to false in finally block if redirect succeeds
   };
 
   return (

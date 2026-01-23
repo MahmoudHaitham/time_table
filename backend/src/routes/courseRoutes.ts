@@ -6,23 +6,24 @@ import {
   updateCourse,
   deleteCourse,
 } from "../controllers/courseController";
+import { validateCourseInput, validateIdParam } from "../middleware/validation";
 
 const router = Router();
 
 // POST /courses - Create a new course
-router.post("/", createCourse);
+router.post("/", validateCourseInput, createCourse);
 
 // GET /courses - Get all courses
 router.get("/", getAllCourses);
 
 // GET /courses/:id - Get course by ID
-router.get("/:id", getCourseById);
+router.get("/:id", validateIdParam("id"), getCourseById);
 
 // PUT /courses/:id - Update course
-router.put("/:id", updateCourse);
+router.put("/:id", validateIdParam("id"), validateCourseInput, updateCourse);
 
 // DELETE /courses/:id - Delete course
-router.delete("/:id", deleteCourse);
+router.delete("/:id", validateIdParam("id"), deleteCourse);
 
 export default router;
 

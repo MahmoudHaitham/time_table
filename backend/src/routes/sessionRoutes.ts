@@ -5,21 +5,22 @@ import {
   updateSession,
   deleteSession,
 } from "../controllers/sessionController";
+import { validateSessionInput, validateIdParam } from "../middleware/validation";
 
 // Use mergeParams: true to merge params from parent route
 const router = Router({ mergeParams: true });
 
 // POST /components/:componentId/sessions - Create a session for a component
-router.post("/", createSession);
+router.post("/", validateSessionInput, createSession);
 
 // GET /components/:componentId/sessions - Get all sessions for a component
 router.get("/", getSessionsByComponent);
 
 // PUT /sessions/:id - Update a session
-router.put("/:id", updateSession);
+router.put("/:id", validateIdParam("id"), validateSessionInput, updateSession);
 
 // DELETE /sessions/:id - Delete a session
-router.delete("/:id", deleteSession);
+router.delete("/:id", validateIdParam("id"), deleteSession);
 
 export default router;
 

@@ -1,7 +1,15 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
+// Get CSRF token
+function getCSRFToken(): string | null {
+  if (typeof window !== "undefined") {
+    return sessionStorage.getItem("csrf_token");
+  }
+  return null;
+}
+
 async function fetchAPI(endpoint: string, options: RequestInit = {}) {
-  const token = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+  const token = typeof window !== "undefined" ? sessionStorage.getItem("auth_token") : null;
   
   const headers: HeadersInit = {
     "Content-Type": "application/json",
@@ -10,6 +18,14 @@ async function fetchAPI(endpoint: string, options: RequestInit = {}) {
   
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  // Add CSRF token for state-changing operations
+  if (["POST", "PUT", "DELETE", "PATCH"].includes(options.method || "")) {
+    const csrfToken = getCSRFToken();
+    if (csrfToken) {
+      headers["X-CSRF-Token"] = csrfToken;
+    }
   }
 
   // Ensure endpoint doesn't have double slashes or invalid characters
