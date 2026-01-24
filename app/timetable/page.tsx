@@ -131,17 +131,17 @@ export default function TimetableViewPage() {
                 animate={{ opacity: 1, y: 0 }}
                 className="mb-8"
               >
-                <div className="mb-6">
-                  <h2 className="text-3xl font-bold text-white mb-2 flex items-center gap-3">
+                <div className="mb-4 sm:mb-6">
+                  <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
                     <div className="p-2 bg-gradient-to-br from-cyan-500/20 to-blue-600/20 rounded-lg border border-cyan-500/50">
-                      <span className="text-2xl text-cyan-400">{systemType}</span>
+                      <span className="text-xl sm:text-2xl text-cyan-400">{systemType}</span>
                     </div>
                     <span>System {systemType}</span>
                   </h2>
-                  <p className="text-gray-400">Academic schedules for System {systemType}</p>
+                  <p className="text-gray-400 text-sm sm:text-base">Academic schedules for System {systemType}</p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                   {systemTerms
                     .filter((term) => (term.id || term.token) && term.term_number)
                     .map((term, index) => {
@@ -159,24 +159,24 @@ export default function TimetableViewPage() {
                         >
                           <Link
                             href={`/timetable/terms/${termIdentifier}?system=${systemType}`}
-                            className="block p-6 glass border border-white/10 rounded-xl hover:border-cyan-500/50 transition-all group relative overflow-hidden"
+                            className="block p-4 sm:p-5 md:p-6 glass border border-white/10 rounded-lg sm:rounded-xl hover:border-cyan-500/50 transition-all group relative overflow-hidden min-h-[120px]"
                           >
                             <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/0 to-blue-600/0 group-hover:from-cyan-500/10 group-hover:to-blue-600/10 transition-all duration-300"></div>
                             <div className="relative z-10">
-                              <div className="flex items-center gap-3 mb-4">
-                                <div className="p-3 bg-cyan-500/20 rounded-lg group-hover:bg-cyan-500/30 transition-colors">
-                                  <Clock className="w-6 h-6 text-cyan-400" />
+                              <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+                                <div className="p-2 sm:p-3 bg-cyan-500/20 rounded-lg group-hover:bg-cyan-500/30 transition-colors">
+                                  <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-400" />
                                 </div>
-                                <h3 className="text-2xl font-bold text-white group-hover:text-gradient transition-colors">
+                                <h3 className="text-xl sm:text-2xl font-bold text-white group-hover:text-gradient transition-colors">
                                   {term.term_number}
                                 </h3>
                               </div>
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="inline-flex items-center gap-2 px-3 py-1 bg-green-500/20 text-green-400 border border-green-500/50 rounded-full text-sm font-semibold">
-                                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                                <span className="inline-flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 bg-green-500/20 text-green-400 border border-green-500/50 rounded-full text-xs sm:text-sm font-semibold">
+                                  <div className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-green-400 rounded-full animate-pulse"></div>
                                   Published
                                 </span>
-                                <span className="inline-flex items-center gap-2 px-3 py-1 bg-cyan-500/20 text-cyan-400 border border-cyan-500/50 rounded-full text-sm font-semibold">
+                                <span className="inline-flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1 bg-cyan-500/20 text-cyan-400 border border-cyan-500/50 rounded-full text-xs sm:text-sm font-semibold">
                                   System {systemType}
                                 </span>
                               </div>

@@ -259,7 +259,15 @@ export default function ClassEditorPage() {
   };
 
   const handleAssignCourses = async (courseIds: number[]) => {
+    // Prevent duplicate requests
+    if (loading) {
+      console.log("[handleAssignCourses] Request already in progress, ignoring duplicate call");
+      return;
+    }
+    
     try {
+      setLoading(true);
+      
       // Check for already assigned courses
       const coursesRes = await classCoursesAPI.getByClass(classId);
       const existingClassCourses = coursesRes.data || [];
@@ -316,6 +324,8 @@ export default function ClassEditorPage() {
         title: "Failed to Assign Courses",
         message: err.message || "Failed to assign courses. Please try again.",
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -772,7 +782,10 @@ export default function ClassEditorPage() {
                                       <XCircle className="w-3 h-3" />
                                     </button>
                                     <div className="font-semibold text-white pr-6">
-                                      {item.course.code} ({item.component.component_type})
+                                      {item.course.name} ({item.component.component_type})
+                                    </div>
+                                    <div className="text-gray-400 text-xs mt-0.5">
+                                      {item.course.code}
                                     </div>
                                     {item.session.room && (
                                       <div className="text-gray-300 text-xs flex items-center gap-1 mt-1">

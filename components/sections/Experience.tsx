@@ -21,11 +21,11 @@ export default function Experience() {
           className="space-y-12"
         >
           {/* Section Header */}
-          <div className="text-center space-y-4">
-            <h2 className="text-4xl md:text-5xl font-bold">
+          <div className="text-center space-y-3 sm:space-y-4 px-4">
+            <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold">
               Work <span className="text-gradient">Experience</span>
             </h2>
-            <p className="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+            <p className="text-sm sm:text-base md:text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
               Professional journey and contributions to the tech industry
             </p>
           </div>
@@ -50,7 +50,7 @@ export default function Experience() {
                   <div className="absolute left-8 md:left-1/2 w-5 h-5 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 border-4 border-white dark:border-gray-900 transform -translate-x-1/2 z-10 shadow-[0_0_20px_rgba(0,240,255,0.8)] animate-pulse" />
 
                   {/* Content card */}
-                  <div className={`w-full md:w-[calc(50%-3rem)] ml-20 md:ml-0 ${idx % 2 === 0 ? "md:pr-12" : "md:pl-12"}`}>
+                  <div className={`w-full md:w-[calc(50%-2rem)] lg:w-[calc(50%-3rem)] ml-12 sm:ml-16 md:ml-0 ${idx % 2 === 0 ? "md:pr-6 lg:pr-12" : "md:pl-6 lg:pl-12"}`}>
                     <motion.div 
                       whileHover={{ scale: 1.08, y: -10, rotateY: 5, rotateX: 5 }}
                       transition={{ type: "spring", stiffness: 200, damping: 10 }}

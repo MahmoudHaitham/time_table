@@ -32,13 +32,25 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    e.stopPropagation(); // Prevent any event bubbling
+    
+    // Prevent double submission
+    if (loading) {
+      console.log("[Login] Already submitting, ignoring...");
+      return;
+    }
+    
     setLoading(true);
     setError(null);
 
     try {
       const { authAPI } = await import("@/lib/api/auth");
       
-      console.log("[Login] Attempting login...");
+      // Log API URL being used
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+      console.log("[Login] API URL:", apiUrl);
+      console.log("[Login] Attempting login with:", { registration_number: formData.registration_number });
+      
       const data = await authAPI.login(formData.registration_number, formData.password);
       console.log("[Login] Login successful:", data);
 
@@ -47,35 +59,47 @@ export default function LoginPage() {
       if (!token) {
         throw new Error("Token was not stored. Please try again.");
       }
-      console.log("[Login] Token stored successfully in sessionStorage and cookie");
-      
-      // Small delay to ensure cookie is set before redirect
-      await new Promise(resolve => setTimeout(resolve, 100));
+      console.log("[Login] Token stored successfully");
 
       // Token is stored in sessionStorage by authAPI.login
       // Refresh token is in httpOnly cookie set by backend
+      // Access token cookie is set above for middleware
 
       // Redirect to the intended page or default to admin dashboard
       // Also check URL params one more time in case state wasn't updated
       const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
       const finalRedirect = redirectTo || urlParams?.get("redirect") || "/admin/timetable";
       
-      console.log(`[Login] Success! Token stored. Redirecting to: ${finalRedirect}`);
-      console.log(`[Login] redirectTo state: ${redirectTo}, URL param: ${urlParams?.get("redirect")}`);
-      
-      // Use window.location.href for immediate, reliable redirect
-      // This ensures the page fully reloads and middleware can verify the token
+      // Redirect immediately
       window.location.href = finalRedirect;
     } catch (err: any) {
       console.error("[Login] Login error:", err);
-      setError(err.message || "An error occurred. Please check if the backend is running.");
+      console.error("[Login] Error details:", {
+        message: err.message,
+        stack: err.stack,
+        name: err.name,
+      });
+      
+      // More detailed error message
+      let errorMessage = err.message || "An error occurred during login.";
+      
+      // Check for common issues
+      if (err.message?.includes("Failed to fetch") || err.message?.includes("Cannot connect")) {
+        errorMessage = "Cannot connect to server. Please ensure:\n1. Backend is running\n2. API URL is correct\n3. CORS is configured";
+      } else if (err.message?.includes("401") || err.message?.includes("Invalid credentials")) {
+        errorMessage = "Invalid registration number or password. Please try again.";
+      } else if (err.message?.includes("429")) {
+        errorMessage = "Too many login attempts. Please wait a moment and try again.";
+      }
+      
+      setError(errorMessage);
       setLoading(false);
     }
     // Note: Don't set loading to false in finally block if redirect succeeds
   };
 
   return (
-    <div className="min-h-screen relative flex items-center justify-center p-4">
+    <div className="min-h-screen relative flex items-center justify-center p-4 sm:p-6 md:p-8">
       <MagicBackground />
       <FloatingShapes />
       
@@ -85,18 +109,18 @@ export default function LoginPage() {
         transition={{ duration: 0.6 }}
         className="relative z-10 w-full max-w-md"
       >
-        <div className="glass backdrop-blur-xl border border-white/10 rounded-2xl p-8 shadow-2xl">
+        <div className="glass backdrop-blur-xl border border-white/10 rounded-xl sm:rounded-2xl p-6 sm:p-8 shadow-2xl">
           {/* Header */}
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="text-center mb-8"
+            className="text-center mb-6 sm:mb-8"
           >
-            <h1 className="text-4xl font-bold mb-2">
+            <h1 className="text-3xl sm:text-4xl font-bold mb-2">
               <span className="text-gradient">Timetable</span> System
             </h1>
-            <p className="text-gray-400">
+            <p className="text-gray-400 text-sm sm:text-base">
               Sign in to continue
             </p>
           </motion.div>
@@ -113,7 +137,7 @@ export default function LoginPage() {
           )}
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
             <div>
               <label className="block text-gray-300 mb-2 text-sm font-medium">
                 Registration Number
@@ -124,7 +148,7 @@ export default function LoginPage() {
                 onChange={(e) =>
                   setFormData({ ...formData, registration_number: e.target.value })
                 }
-                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+                className="w-full px-4 py-3 sm:py-3.5 bg-white/5 border border-white/10 rounded-lg text-sm sm:text-base text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition-all min-h-[44px]"
                 placeholder="Enter registration number"
                 required
               />
@@ -140,7 +164,7 @@ export default function LoginPage() {
                 onChange={(e) =>
                   setFormData({ ...formData, password: e.target.value })
                 }
-                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+                className="w-full px-4 py-3 sm:py-3.5 bg-white/5 border border-white/10 rounded-lg text-sm sm:text-base text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition-all min-h-[44px]"
                 placeholder="Enter password"
                 required
               />
@@ -151,7 +175,7 @@ export default function LoginPage() {
               whileTap={{ scale: 0.98 }}
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-semibold shadow-lg shadow-cyan-500/50 hover:shadow-xl hover:shadow-cyan-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-3 sm:py-3.5 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-semibold text-sm sm:text-base shadow-lg shadow-cyan-500/50 hover:shadow-xl hover:shadow-cyan-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed min-h-[52px]"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">

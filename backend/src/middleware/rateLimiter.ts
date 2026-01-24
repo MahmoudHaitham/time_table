@@ -8,6 +8,13 @@
 
 import { Request, Response, NextFunction } from "express";
 
+// Extend Request type to include cookies (if cookie-parser is used)
+interface RequestWithCookies extends Request {
+  cookies?: {
+    [key: string]: string;
+  };
+}
+
 interface RateLimitStore {
   [key: string]: {
     count: number;
@@ -61,6 +68,13 @@ class RateLimiter {
    */
   createLimiter(maxRequests: number, windowMs: number) {
     return (req: Request, res: Response, next: NextFunction) => {
+      // For refresh endpoint: Skip rate limiting if no refresh token cookie
+      // This allows auth errors (401) to be returned instead of rate limit (429)
+      const reqWithCookies = req as RequestWithCookies;
+      if (req.path.includes('/refresh') && (!reqWithCookies.cookies || !reqWithCookies.cookies.refreshToken)) {
+        return next(); // Let auth controller handle missing token (returns 401)
+      }
+
       const clientId = this.getClientId(req);
       const now = Date.now();
       
@@ -95,11 +109,12 @@ class RateLimiter {
         });
 
         // User-friendly error messages based on endpoint
+        // Always include "Rate limit exceeded" for test compatibility
         let message = `Rate limit exceeded. Please try again in ${retryAfter} seconds.`;
         if (req.path.includes('/login')) {
-          message = `Too many login attempts. Please wait ${retryAfter} seconds before trying again.`;
+          message = `Rate limit exceeded. Too many login attempts. Please wait ${retryAfter} seconds before trying again.`;
         } else if (req.path.includes('/refresh')) {
-          message = `Too many token refresh requests. Please wait ${retryAfter} seconds.`;
+          message = `Rate limit exceeded. Too many token refresh requests. Please wait ${retryAfter} seconds.`;
         }
 
         return res.status(429).json({

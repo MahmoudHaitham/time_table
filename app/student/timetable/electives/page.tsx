@@ -30,6 +30,10 @@ interface ElectiveSlot {
 const DAYS = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"];
 const SLOTS = [1, 2, 3, 4];
 
+// Cache key and TTL
+const CACHE_KEY_PREFIX = "elective_slots_";
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes cache
+
 // Color function for component types
 const getSlotColor = (componentType: string) => {
   switch (componentType) {
@@ -50,6 +54,7 @@ export default function ElectivesPage() {
   const [electiveSlots, setElectiveSlots] = useState<ElectiveSlot[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cacheStatus, setCacheStatus] = useState<"cached" | "fresh" | null>(null);
 
   useEffect(() => {
     if (selectedSystem) {
@@ -57,15 +62,75 @@ export default function ElectivesPage() {
     }
   }, [selectedSystem]);
 
-  const loadElectiveSlots = async () => {
+  const loadElectiveSlots = async (forceRefresh: boolean = false) => {
     if (!selectedSystem) return;
     
     try {
       setLoading(true);
       setError(null);
+
+      const cacheKey = `${CACHE_KEY_PREFIX}${selectedSystem}`;
+
+      // Check cache first (unless forcing refresh)
+      if (!forceRefresh && typeof window !== "undefined") {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          try {
+            const { data, hash, timestamp } = JSON.parse(cached);
+            const age = Date.now() - timestamp;
+            
+            // Use cache if less than TTL old
+            if (age < CACHE_TTL) {
+              console.log(`[Electives] Loading from cache for System ${selectedSystem} (age: ${Math.round(age / 1000)}s)`);
+              setElectiveSlots(data);
+              setCacheStatus("cached");
+              setLoading(false);
+              return;
+            } else {
+              console.log(`[Electives] Cache expired for System ${selectedSystem}, fetching fresh data`);
+            }
+          } catch (e) {
+            console.warn("[Electives] Cache parse error, fetching fresh data");
+          }
+        }
+      }
+
+      // Fetch fresh data from server
+      console.log(`[Electives] Fetching fresh data for System ${selectedSystem}...`);
+      const startTime = Date.now();
       const response = await studentTimetableAPI.getAllElectiveSlots(selectedSystem);
-      setElectiveSlots(response.data || []);
+      const fetchTime = Date.now() - startTime;
+      
+      // Handle response - check if it has data directly or wrapped
+      let data: ElectiveSlot[];
+      let hash: string | null = null;
+      
+      if (Array.isArray(response)) {
+        // Response is directly an array
+        data = response;
+      } else if (response.data) {
+        // Response has data property
+        data = response.data;
+        hash = response.hash || null;
+      } else {
+        // Fallback
+        data = [];
+      }
+      
+      setElectiveSlots(data);
+
+      // Cache the result with hash
+      if (typeof window !== "undefined") {
+        localStorage.setItem(cacheKey, JSON.stringify({
+          data: data,
+          hash: hash,
+          timestamp: Date.now(),
+        }));
+        console.log(`[Electives] Data cached for System ${selectedSystem} (fetch took ${fetchTime}ms, hash: ${hash || 'N/A'})`);
+        setCacheStatus("fresh");
+      }
     } catch (err: any) {
+      console.error("Failed to load elective slots:", err);
       setError(err.message || "Failed to load elective slots");
       setElectiveSlots([]);
     } finally {
@@ -183,30 +248,114 @@ export default function ElectivesPage() {
                   <h2 className="text-3xl font-bold text-white mb-2">
                     System {selectedSystem} Electives
                   </h2>
-                  <p className="text-gray-400">All elective course slots</p>
+                  <p className="text-gray-400 text-sm sm:text-base">
+                    All elective course slots
+                    {cacheStatus === "cached" && (
+                      <span className="ml-2 text-xs text-green-400">(Loaded from cache)</span>
+                    )}
+                    {cacheStatus === "fresh" && (
+                      <span className="ml-2 text-xs text-blue-400">(Fresh data)</span>
+                    )}
+                  </p>
                 </div>
               </div>
-              <button
-                onClick={() => setSelectedSystem(null)}
-                className="px-4 py-2 glass border border-white/10 rounded-lg hover:border-green-500/50 transition-all text-white"
-              >
-                Change System
-              </button>
+              <div className="flex gap-2 sm:gap-3">
+                <button
+                  onClick={() => loadElectiveSlots(true)}
+                  disabled={loading}
+                  className="px-3 sm:px-4 py-2 glass border border-white/10 rounded-lg hover:border-cyan-500/50 transition-all text-white text-sm sm:text-base disabled:opacity-50 min-h-[44px]"
+                  title="Refresh data"
+                >
+                  <span className="text-cyan-400">Refresh</span>
+                </button>
+                <button
+                  onClick={() => setSelectedSystem(null)}
+                  className="px-3 sm:px-4 py-2 glass border border-white/10 rounded-lg hover:border-green-500/50 transition-all text-white text-sm sm:text-base min-h-[44px]"
+                >
+                  Change System
+                </button>
+              </div>
             </div>
 
             {loading ? (
-              <div className="text-center py-16">
+              <div className="text-center py-12 sm:py-16">
                 <div className="w-8 h-8 border-3 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p className="text-gray-400">Loading elective slots...</p>
+                <p className="text-gray-400 text-sm sm:text-base">Loading elective slots...</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
+              <>
+                {/* Mobile: Stacked Day View */}
+                <div className="block md:hidden space-y-4">
+                {DAYS.map((day, dayIndex) => {
+                  const daySessions: Array<{slot: number; items: any[]}> = [];
+                  SLOTS.forEach((slot) => {
+                    const cellContent = getCellContent(day, slot);
+                    if (cellContent.length > 0) {
+                      daySessions.push({ slot, items: cellContent });
+                    }
+                  });
+                  
+                  if (daySessions.length === 0) return null;
+                  
+                  return (
+                    <motion.div
+                      key={day}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: dayIndex * 0.05 }}
+                      className="border border-white/10 rounded-lg p-3 sm:p-4"
+                    >
+                      <h3 className="text-white font-semibold mb-3 text-sm sm:text-base">{day}</h3>
+                      <div className="space-y-2">
+                        {daySessions.map(({ slot, items }) => (
+                          <div key={slot} className="space-y-1.5">
+                            <div className="text-xs text-gray-400 font-medium">Slot {slot}</div>
+                            {items.map((item, idx) => (
+                              <motion.div
+                                key={`${item.course.id}-${item.component.id}-${item.session.id}-${idx}`}
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                className={`text-xs p-2 sm:p-2.5 ${getSlotColor(item.component.component_type)} rounded-lg backdrop-blur-sm border`}
+                              >
+                                <div className="font-semibold text-white text-xs sm:text-sm">
+                                  {item.course.code} ({item.component.component_type})
+                                </div>
+                                <div className="text-gray-200 text-xs mt-1 truncate">
+                                  {item.course.name}
+                                </div>
+                                <div className="text-gray-300 text-xs mt-1">
+                                  Term {item.term_number} • {item.class_code}
+                                </div>
+                                {item.session.room && (
+                                  <div className="text-gray-300 text-xs flex items-center gap-1 mt-1">
+                                    <MapPin className="w-3 h-3 flex-shrink-0" />
+                                    <span className="truncate">{item.session.room}</span>
+                                  </div>
+                                )}
+                                {item.session.instructor && (
+                                  <div className="text-gray-300 text-xs flex items-center gap-1 mt-1">
+                                    <User className="w-3 h-3 flex-shrink-0" />
+                                    <span className="truncate">{item.session.instructor}</span>
+                                  </div>
+                                )}
+                              </motion.div>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+              
+              {/* Desktop: Table View */}
+              <div className="hidden md:block overflow-x-auto -mx-6 px-6">
+                <table className="w-full min-w-[600px]">
                   <thead>
                     <tr>
-                      <th className="p-4 text-left text-white font-semibold">Day / Slot</th>
+                      <th className="p-3 sm:p-4 text-left text-white font-semibold text-sm sm:text-base sticky left-0 bg-gray-900/95 z-10">Day / Slot</th>
                       {SLOTS.map((slot) => (
-                        <th key={slot} className="p-4 text-center text-white font-semibold">
+                        <th key={slot} className="p-3 sm:p-4 text-center text-white font-semibold text-sm sm:text-base min-w-[150px]">
                           {slot}
                         </th>
                       ))}
@@ -221,13 +370,13 @@ export default function ElectivesPage() {
                         transition={{ delay: dayIndex * 0.05 }}
                         className="border-t border-white/10"
                       >
-                        <td className="p-4 text-white font-semibold">{day}</td>
+                        <td className="p-3 sm:p-4 text-white font-semibold text-sm sm:text-base sticky left-0 bg-gray-900/95 z-10">{day}</td>
                         {SLOTS.map((slot) => {
                           const cellContent = getCellContent(day, slot);
                           return (
                             <td
                               key={slot}
-                              className="p-2 min-w-[200px] h-auto border border-white/10 align-top"
+                              className="p-2 min-w-[150px] h-auto border border-white/10 align-top"
                             >
                               {cellContent.length > 0 ? (
                                 <div className="space-y-1">
@@ -236,12 +385,12 @@ export default function ElectivesPage() {
                                       key={`${item.course.id}-${item.component.id}-${item.session.id}-${idx}`}
                                       initial={{ opacity: 0, scale: 0.9 }}
                                       animate={{ opacity: 1, scale: 1 }}
-                                      className={`text-xs p-2 ${getSlotColor(item.component.component_type)} rounded-lg backdrop-blur-sm border`}
+                                      className={`text-xs p-1.5 sm:p-2 ${getSlotColor(item.component.component_type)} rounded-lg backdrop-blur-sm border`}
                                     >
-                                      <div className="font-semibold text-white">
+                                      <div className="font-semibold text-white text-xs">
                                         {item.course.code} ({item.component.component_type})
                                       </div>
-                                      <div className="text-gray-200 text-xs mt-1">
+                                      <div className="text-gray-200 text-xs mt-1 truncate">
                                         {item.course.name}
                                       </div>
                                       <div className="text-gray-300 text-xs mt-1">
@@ -249,14 +398,14 @@ export default function ElectivesPage() {
                                       </div>
                                       {item.session.room && (
                                         <div className="text-gray-300 text-xs flex items-center gap-1 mt-1">
-                                          <MapPin className="w-3 h-3" />
-                                          {item.session.room}
+                                          <MapPin className="w-3 h-3 flex-shrink-0" />
+                                          <span className="truncate">{item.session.room}</span>
                                         </div>
                                       )}
                                       {item.session.instructor && (
                                         <div className="text-gray-300 text-xs flex items-center gap-1 mt-1">
-                                          <User className="w-3 h-3" />
-                                          {item.session.instructor}
+                                          <User className="w-3 h-3 flex-shrink-0" />
+                                          <span className="truncate">{item.session.instructor}</span>
                                         </div>
                                       )}
                                     </motion.div>
@@ -275,6 +424,7 @@ export default function ElectivesPage() {
                   </tbody>
                 </table>
               </div>
+              </>
             )}
 
             {!loading && electiveSlots.length === 0 && (

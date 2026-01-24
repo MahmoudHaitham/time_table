@@ -147,16 +147,16 @@ export default function TermTimetablePage() {
     : classes;
 
   return (
-    <div className="min-h-screen p-8">
+    <div className="min-h-screen p-4 sm:p-6 md:p-8">
       <div className="max-w-7xl mx-auto">
         {/* System Type Badge */}
         {systemType && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-4"
+            className="mb-3 sm:mb-4"
           >
-            <span className="inline-flex items-center gap-2 px-4 py-2 bg-cyan-500/20 text-cyan-400 border border-cyan-500/50 rounded-full text-sm font-semibold">
+            <span className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-cyan-500/20 text-cyan-400 border border-cyan-500/50 rounded-full text-xs sm:text-sm font-semibold">
               System {systemType}
             </span>
           </motion.div>
@@ -165,24 +165,24 @@ export default function TermTimetablePage() {
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-6 sm:mb-8"
         >
           <button
             onClick={() => router.push("/timetable")}
-            className="flex items-center gap-2 text-cyan-400 hover:text-cyan-300 mb-4 transition-colors group"
+            className="flex items-center gap-2 text-cyan-400 hover:text-cyan-300 mb-3 sm:mb-4 transition-colors group min-h-[44px]"
           >
-            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-            <span>Back to Timetables</span>
+            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 group-hover:-translate-x-1 transition-transform" />
+            <span className="text-sm sm:text-base">Back to Timetables</span>
           </button>
-          <div className="flex items-center gap-4">
-            <div className="p-4 bg-cyan-500/20 rounded-xl">
-              <Calendar className="w-8 h-8 text-cyan-400" />
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
+            <div className="p-3 sm:p-4 bg-cyan-500/20 rounded-lg sm:rounded-xl">
+              <Calendar className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-cyan-400" />
             </div>
             <div>
-              <h1 className="text-5xl font-bold mb-2">
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2">
                 <span className="text-gradient">{term.term_number}</span>
               </h1>
-              <p className="text-gray-400">Academic Timetable</p>
+              <p className="text-gray-400 text-sm sm:text-base">Academic Timetable</p>
             </div>
           </div>
         </motion.div>
@@ -202,11 +202,11 @@ export default function TermTimetablePage() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-6 flex gap-4 flex-wrap"
+            className="mb-4 sm:mb-6 flex gap-2 sm:gap-3 md:gap-4 flex-wrap overflow-x-auto pb-2"
           >
             <button
               onClick={() => setSelectedClass(null)}
-              className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+              className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-semibold transition-all whitespace-nowrap min-h-[44px] flex items-center ${
                 selectedClass === null
                   ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/50"
                   : "glass border border-white/10 text-gray-300 hover:text-white hover:border-cyan-500/50"
@@ -218,7 +218,7 @@ export default function TermTimetablePage() {
               <button
                 key={classItem.id}
                 onClick={() => setSelectedClass(classItem.id)}
-                className={`px-4 py-2 rounded-lg font-semibold transition-all ${
+                className={`px-3 sm:px-4 py-2 rounded-lg text-sm sm:text-base font-semibold transition-all whitespace-nowrap min-h-[44px] flex items-center ${
                   selectedClass === classItem.id
                     ? "bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/50"
                     : "glass border border-white/10 text-gray-300 hover:text-white hover:border-cyan-500/50"
@@ -231,28 +231,87 @@ export default function TermTimetablePage() {
         )}
 
         {/* Timetables */}
-        <div className="space-y-8">
+        <div className="space-y-6 sm:space-y-8">
           {displayClasses.map((classItem, classIndex) => (
             <motion.div
               key={classItem.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: classIndex * 0.1 }}
-              className="glass border border-white/10 rounded-xl p-6 overflow-hidden"
+              className="glass border border-white/10 rounded-lg sm:rounded-xl p-4 sm:p-5 md:p-6 overflow-hidden"
             >
-              <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
-                <div className="p-2 bg-cyan-500/20 rounded-lg">
-                  <Clock className="w-6 h-6 text-cyan-400" />
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-4 sm:mb-6 flex items-center gap-2 sm:gap-3">
+                <div className="p-1.5 sm:p-2 bg-cyan-500/20 rounded-lg">
+                  <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-400" />
                 </div>
                 Class {classItem.class_code}
               </h2>
-              <div className="overflow-x-auto">
-                <table className="w-full">
+              {/* Mobile: Stacked Day View */}
+              <div className="block md:hidden space-y-4">
+                {DAYS.map((day, dayIndex) => {
+                  const daySessions: Array<{slot: number; sessions: any[]}> = [];
+                  SLOTS.forEach((slot) => {
+                    const cellContent = getCellContent(day, slot, classItem);
+                    if (cellContent.length > 0) {
+                      daySessions.push({ slot, sessions: cellContent });
+                    }
+                  });
+                  
+                  if (daySessions.length === 0) return null;
+                  
+                  return (
+                    <motion.div
+                      key={day}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: (classIndex * 0.1) + (dayIndex * 0.02) }}
+                      className="border border-white/10 rounded-lg p-3 sm:p-4"
+                    >
+                      <h3 className="text-white font-semibold mb-3 text-sm sm:text-base">{day}</h3>
+                      <div className="space-y-2">
+                        {daySessions.map(({ slot, sessions }) => (
+                          <div key={slot} className="space-y-1.5">
+                            <div className="text-xs text-gray-400 font-medium">Slot {slot}</div>
+                            {sessions.map((item) => (
+                              <motion.div
+                                key={`${item.session.id}-${item.component.id}-${item.course.id}`}
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                className={`text-xs p-2 sm:p-2.5 ${getSlotColor(item.component.component_type)} rounded-lg backdrop-blur-sm border`}
+                              >
+                                <div className="font-semibold text-white mb-1 text-xs sm:text-sm">
+                                  {item.course.code} ({item.component.component_type})
+                                </div>
+                                {item.session.room && (
+                                  <div className="text-gray-300 text-xs flex items-center gap-1">
+                                    <MapPin className="w-3 h-3 flex-shrink-0" />
+                                    <span className="truncate">{item.session.room}</span>
+                                  </div>
+                                )}
+                                {item.session.instructor && (
+                                  <div className="text-gray-400 text-xs flex items-center gap-1 mt-1">
+                                    <User className="w-3 h-3 flex-shrink-0" />
+                                    <span className="truncate">{item.session.instructor}</span>
+                                  </div>
+                                )}
+                              </motion.div>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+              
+              {/* Desktop: Table View */}
+              <div className="hidden md:block overflow-x-auto -mx-4 sm:-mx-5 md:-mx-6 px-4 sm:px-5 md:px-6">
+                <table className="w-full min-w-[600px]">
                   <thead>
                     <tr>
-                      <th className="p-4 text-left text-white font-semibold">Day / Slot</th>
+                      <th className="p-3 sm:p-4 text-left text-white font-semibold text-sm sm:text-base sticky left-0 bg-gray-900/95 z-10">Day / Slot</th>
                       {SLOTS.map((slot) => (
-                        <th key={slot} className="p-4 text-center text-white font-semibold">
+                        <th key={slot} className="p-3 sm:p-4 text-center text-white font-semibold text-sm sm:text-base min-w-[120px]">
                           {slot}
                         </th>
                       ))}
@@ -267,13 +326,13 @@ export default function TermTimetablePage() {
                         transition={{ delay: (classIndex * 0.1) + (dayIndex * 0.02) }}
                         className="border-t border-white/10"
                       >
-                        <td className="p-4 text-white font-semibold">{day}</td>
+                        <td className="p-3 sm:p-4 text-white font-semibold text-sm sm:text-base sticky left-0 bg-gray-900/95 z-10">{day}</td>
                         {SLOTS.map((slot) => {
                           const cellContent = getCellContent(day, slot, classItem);
                           return (
                             <td
                               key={slot}
-                              className="p-2 min-w-[150px] h-24 border border-white/10"
+                              className="p-2 min-w-[120px] h-20 sm:h-24 border border-white/10"
                             >
                               {cellContent.length > 0 ? (
                                 <div className="space-y-1">
@@ -282,21 +341,21 @@ export default function TermTimetablePage() {
                                       key={`${item.session.id}-${item.component.id}-${item.course.id}`}
                                       initial={{ opacity: 0, scale: 0.9 }}
                                       animate={{ opacity: 1, scale: 1 }}
-                                      className={`text-xs p-2 ${getSlotColor(item.component.component_type)} rounded-lg backdrop-blur-sm border`}
+                                      className={`text-xs p-1.5 sm:p-2 ${getSlotColor(item.component.component_type)} rounded-lg backdrop-blur-sm border`}
                                     >
-                                      <div className="font-semibold text-white mb-1">
+                                      <div className="font-semibold text-white mb-1 text-xs">
                                         {item.course.code} ({item.component.component_type})
                                       </div>
                                       {item.session.room && (
                                         <div className="text-gray-300 text-xs flex items-center gap-1">
-                                          <MapPin className="w-3 h-3" />
-                                          {item.session.room}
+                                          <MapPin className="w-3 h-3 flex-shrink-0" />
+                                          <span className="truncate">{item.session.room}</span>
                                         </div>
                                       )}
                                       {item.session.instructor && (
                                         <div className="text-gray-400 text-xs flex items-center gap-1 mt-1">
-                                          <User className="w-3 h-3" />
-                                          {item.session.instructor}
+                                          <User className="w-3 h-3 flex-shrink-0" />
+                                          <span className="truncate">{item.session.instructor}</span>
                                         </div>
                                       )}
                                     </motion.div>

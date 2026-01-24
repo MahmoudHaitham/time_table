@@ -3,10 +3,14 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { coursesAPI, classesAPI, classCoursesAPI, componentsAPI, sessionsAPI, termsAPI } from "@/lib/api/timetable";
-import { ArrowLeft, BookOpen, Users, Calendar, MapPin, Clock, CheckCircle2, XCircle, Edit, Trash2 } from "lucide-react";
+import { coursesAPI } from "@/lib/api/timetable";
+import { ArrowLeft, BookOpen, Users, Calendar, MapPin, Clock, CheckCircle2, XCircle, Edit, Trash2, Download } from "lucide-react";
 import AlertModal from "@/components/ui/AlertModal";
 import ConfirmModal from "@/components/ui/ConfirmModal";
+
+// Cache key and TTL
+const CACHE_KEY = "courses_with_assignments";
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 interface Course {
   id: number;
@@ -60,6 +64,7 @@ export default function CoursesPage() {
   const [courseAssignments, setCourseAssignments] = useState<CourseAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cacheStatus, setCacheStatus] = useState<"cached" | "fresh" | null>(null);
   
   // Edit modal state
   const [showEditModal, setShowEditModal] = useState(false);
@@ -83,7 +88,7 @@ export default function CoursesPage() {
   });
 
   useEffect(() => {
-    const token = localStorage.getItem("auth_token");
+    const token = typeof window !== "undefined" ? sessionStorage.getItem("auth_token") : null;
     if (!token) {
       router.push("/login");
       return;
@@ -91,111 +96,68 @@ export default function CoursesPage() {
     loadCoursesData();
   }, [router]);
 
-  const loadCoursesData = async () => {
+  const loadCoursesData = async (forceRefresh: boolean = false) => {
     try {
       setLoading(true);
       setError(null);
 
-      // Load all courses
-      const coursesRes = await coursesAPI.getAll();
-      const allCourses = coursesRes.data || [];
-      setCourses(allCourses);
-
-      // Get all terms first
-      const termsRes = await termsAPI.getAll();
-      const allTerms = termsRes.data || [];
-      
-      // Load all classes from all terms
-      const classesMap = new Map<number, Class>();
-      
-      for (const term of allTerms) {
-        try {
-          const classesRes = await classesAPI.getByTerm(term.id);
-          const termClasses = classesRes.data || [];
-          termClasses.forEach((cls: Class) => {
-            classesMap.set(cls.id, cls);
-          });
-        } catch (err) {
-          console.error(`Failed to load classes for term ${term.id}:`, err);
-        }
-      }
-
-      // Now get class courses for each class
-      const classCourseMap = new Map<number, ClassCourse[]>();
-      
-      for (const [classId, classItem] of classesMap.entries()) {
-        try {
-          const classCoursesRes = await classCoursesAPI.getByClass(classId);
-          const classCourses = classCoursesRes.data || [];
-          classCourseMap.set(classId, classCourses);
-        } catch (err) {
-          console.error(`Failed to load class courses for class ${classId}:`, err);
-        }
-      }
-
-      // Build the assignments structure
-      const finalAssignments: CourseAssignment[] = [];
-
-      for (const course of allCourses) {
-        const courseClasses: CourseAssignment["classes"] = [];
-
-        for (const [classId, classCourses] of classCourseMap.entries()) {
-          const classCourse = classCourses.find(cc => cc.course_id === course.id);
-          if (classCourse) {
-            const classItem = classesMap.get(classId);
-            if (classItem) {
-              // Get components for this class course
-              try {
-                const componentsRes = await componentsAPI.getByClassCourse(classCourse.id);
-                const components = componentsRes.data || [];
-                
-                // Get sessions for each component
-                const componentsWithSessions = await Promise.all(
-                  components.map(async (comp: Component) => {
-                    try {
-                      const sessionsRes = await sessionsAPI.getByComponent(comp.id);
-                      return {
-                        ...comp,
-                        sessions: sessionsRes.data || [],
-                      };
-                    } catch (err) {
-                      return {
-                        ...comp,
-                        sessions: [],
-                      };
-                    }
-                  })
-                );
-
-                const totalSessions = componentsWithSessions.reduce(
-                  (sum, comp) => sum + comp.sessions.length,
-                  0
-                );
-
-                courseClasses.push({
-                  class: classItem,
-                  components: componentsWithSessions,
-                  totalSessions,
-                });
-              } catch (err) {
-                console.error(`Failed to load components for class course ${classCourse.id}:`, err);
-              }
+      // Check cache first (unless forcing refresh)
+      if (!forceRefresh && typeof window !== "undefined") {
+        const cached = localStorage.getItem(CACHE_KEY);
+        if (cached) {
+          try {
+            const { data, hash, timestamp } = JSON.parse(cached);
+            const age = Date.now() - timestamp;
+            
+            // Use cache if less than TTL old
+            if (age < CACHE_TTL) {
+              console.log(`[Courses] Loading from cache (age: ${Math.round(age / 1000)}s)`);
+              setCourses(data.map((a: CourseAssignment) => a.course));
+              setCourseAssignments(data);
+              setLoading(false);
+              return;
             }
+          } catch (e) {
+            console.warn("[Courses] Cache parse error, fetching fresh data");
           }
         }
-
-        finalAssignments.push({
-          course,
-          classes: courseClasses,
-        });
       }
 
-      setCourseAssignments(finalAssignments);
+      // Fetch fresh data from optimized endpoint
+      console.log("[Courses] Fetching fresh data from server...");
+      const startTime = Date.now();
+      const response = await coursesAPI.getAllWithAssignments();
+      const fetchTime = Date.now() - startTime;
+      
+      const { data, hash } = response;
+      
+      // Extract courses list
+      const allCourses = data.map((assignment: CourseAssignment) => assignment.course);
+      setCourses(allCourses);
+      setCourseAssignments(data);
+
+      // Cache the result
+      if (typeof window !== "undefined") {
+        localStorage.setItem(CACHE_KEY, JSON.stringify({
+          data,
+          hash,
+          timestamp: Date.now(),
+        }));
+        console.log(`[Courses] Data cached (fetch took ${fetchTime}ms, hash: ${hash})`);
+        setCacheStatus("fresh");
+      }
     } catch (err: any) {
       console.error("Failed to load courses data:", err);
       setError(err.message || "Failed to load courses data");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Invalidate cache when courses are modified
+  const invalidateCache = () => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(CACHE_KEY);
     }
   };
 
@@ -222,6 +184,9 @@ export default function CoursesPage() {
         components: components,
       });
       
+      // Invalidate cache and reload
+      invalidateCache();
+      
       setAlertModal({
         isOpen: true,
         type: "success",
@@ -231,7 +196,7 @@ export default function CoursesPage() {
       
       setShowEditModal(false);
       setEditingCourse(null);
-      loadCoursesData();
+      loadCoursesData(true); // Force refresh
     } catch (err: any) {
       setAlertModal({
         isOpen: true,
@@ -252,6 +217,9 @@ export default function CoursesPage() {
         try {
           await coursesAPI.delete(course.id);
           
+          // Invalidate cache and reload
+          invalidateCache();
+          
           setAlertModal({
             isOpen: true,
             type: "success",
@@ -259,7 +227,7 @@ export default function CoursesPage() {
             message: `Course "${course.code}" has been deleted successfully!`,
           });
           
-          loadCoursesData();
+          loadCoursesData(true); // Force refresh
         } catch (err: any) {
           setAlertModal({
             isOpen: true,
@@ -270,6 +238,135 @@ export default function CoursesPage() {
         }
       },
     });
+  };
+
+  const handleDownload = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Use cached data if available, otherwise fetch fresh data
+      let dataToExport: CourseAssignment[];
+      
+      if (typeof window !== "undefined") {
+        const cached = localStorage.getItem(CACHE_KEY);
+        if (cached) {
+          try {
+            const { data, timestamp } = JSON.parse(cached);
+            const age = Date.now() - timestamp;
+            
+            // Use cache if less than TTL old
+            if (age < CACHE_TTL) {
+              console.log("[Download] Using cached data");
+              dataToExport = data;
+            } else {
+              // Cache expired, fetch fresh data
+              console.log("[Download] Cache expired, fetching fresh data");
+              const response = await coursesAPI.getAllWithAssignments();
+              dataToExport = response.data;
+            }
+          } catch (e) {
+            // Cache parse error, fetch fresh data
+            console.log("[Download] Cache parse error, fetching fresh data");
+            const response = await coursesAPI.getAllWithAssignments();
+            dataToExport = response.data;
+          }
+        } else {
+          // No cache, fetch fresh data
+          console.log("[Download] No cache, fetching fresh data");
+          const response = await coursesAPI.getAllWithAssignments();
+          dataToExport = response.data;
+        }
+      } else {
+        // Server-side, fetch fresh data
+        const response = await coursesAPI.getAllWithAssignments();
+        dataToExport = response.data;
+      }
+
+      // Format data as CSV
+      const csvRows: string[] = [];
+      
+      // CSV Header
+      csvRows.push("Course Code,Course Name,Is Elective,Components,Class Code,Component Type,Day,Slot,Room,Instructor");
+      
+      // Process each course assignment
+      dataToExport.forEach((assignment) => {
+        const course = assignment.course;
+        const courseCode = course.code;
+        const courseName = `"${course.name.replace(/"/g, '""')}"`; // Escape quotes in CSV
+        const isElective = course.is_elective ? "Yes" : "No";
+        const components = course.component_types || "N/A";
+        
+        if (assignment.classes.length === 0) {
+          // Course not assigned to any class
+          csvRows.push(`${courseCode},${courseName},${isElective},${components},N/A,N/A,N/A,N/A,N/A,N/A`);
+        } else {
+          // Course assigned to classes
+          assignment.classes.forEach((classAssignment) => {
+            const classCode = classAssignment.class.class_code;
+            
+            if (classAssignment.components.length === 0) {
+              // Class has no components
+              csvRows.push(`${courseCode},${courseName},${isElective},${components},${classCode},N/A,N/A,N/A,N/A,N/A`);
+            } else {
+              // Process each component
+              classAssignment.components.forEach((component) => {
+                const componentType = component.component_type === "L" ? "Lecture" : 
+                                     component.component_type === "S" ? "Section" : "Lab";
+                
+                if (component.sessions.length === 0) {
+                  // Component has no sessions
+                  csvRows.push(`${courseCode},${courseName},${isElective},${components},${classCode},${componentType},N/A,N/A,N/A,N/A`);
+                } else {
+                  // Process each session
+                  component.sessions.forEach((session) => {
+                    const day = session.day || "N/A";
+                    const slot = session.slot?.toString() || "N/A";
+                    const room = session.room ? `"${session.room.replace(/"/g, '""')}"` : "N/A";
+                    const instructor = session.instructor ? `"${session.instructor.replace(/"/g, '""')}"` : "N/A";
+                    
+                    csvRows.push(`${courseCode},${courseName},${isElective},${components},${classCode},${componentType},${day},${slot},${room},${instructor}`);
+                  });
+                }
+              });
+            }
+          });
+        }
+      });
+
+      // Create CSV content
+      const csvContent = csvRows.join("\n");
+      
+      // Create blob and download
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      
+      link.setAttribute("href", url);
+      link.setAttribute("download", `courses_export_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = "hidden";
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      setAlertModal({
+        isOpen: true,
+        type: "success",
+        title: "Download Successful!",
+        message: `Courses data has been downloaded successfully. Total courses: ${dataToExport.length}`,
+      });
+    } catch (err: any) {
+      console.error("Failed to download courses:", err);
+      setAlertModal({
+        isOpen: true,
+        type: "error",
+        title: "Download Failed",
+        message: err.message || "Failed to download courses data. Please try again.",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (loading) {
@@ -288,7 +385,7 @@ export default function CoursesPage() {
   }
 
   return (
-    <div className="min-h-screen p-8">
+    <div className="min-h-screen p-4 sm:p-6 md:p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <motion.div
@@ -303,15 +400,44 @@ export default function CoursesPage() {
             <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
             <span>Back</span>
           </button>
-          <div className="flex items-center gap-4">
-            <div className="p-4 bg-cyan-500/20 rounded-xl">
-              <BookOpen className="w-8 h-8 text-cyan-400" />
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-0">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div className="p-3 sm:p-4 bg-cyan-500/20 rounded-lg sm:rounded-xl">
+                <BookOpen className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-cyan-400" />
+              </div>
+              <div>
+                <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2">
+                  All <span className="text-gradient">Courses</span>
+                </h1>
+                <p className="text-gray-400 text-sm sm:text-base">
+                  View course assignments and schedules
+                  {cacheStatus === "cached" && (
+                    <span className="ml-2 text-xs text-green-400">(Loaded from cache)</span>
+                  )}
+                  {cacheStatus === "fresh" && (
+                    <span className="ml-2 text-xs text-blue-400">(Fresh data)</span>
+                  )}
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-5xl font-bold mb-2">
-                All <span className="text-gradient">Courses</span>
-              </h1>
-              <p className="text-gray-400">View course assignments and schedules</p>
+            <div className="flex gap-2 sm:gap-3">
+              <button
+                onClick={handleDownload}
+                disabled={loading}
+                className="px-4 sm:px-5 py-2 sm:py-2.5 glass border border-white/10 rounded-lg hover:border-green-500/50 transition-all disabled:opacity-50 flex items-center gap-2 text-sm sm:text-base min-h-[44px]"
+                title="Download all courses as CSV"
+              >
+                <Download className="w-4 h-4 sm:w-5 sm:h-5 text-green-400" />
+                <span className="text-green-400 hidden sm:inline">Download</span>
+              </button>
+              <button
+                onClick={() => loadCoursesData(true)}
+                disabled={loading}
+                className="px-4 sm:px-5 py-2 sm:py-2.5 glass border border-white/10 rounded-lg hover:border-cyan-500/50 transition-all disabled:opacity-50 flex items-center gap-2 text-sm sm:text-base min-h-[44px]"
+                title="Refresh data"
+              >
+                <span className="text-cyan-400">Refresh</span>
+              </button>
             </div>
           </div>
         </motion.div>

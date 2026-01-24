@@ -162,9 +162,10 @@ export const authAPI = {
         sessionStorage.setItem("auth_token", data.data.token);
         sessionStorage.setItem("user", JSON.stringify(data.data.user));
         
-        // Also set cookie for middleware to read (non-httpOnly so client can also read it)
-        // Cookie expires when browser closes (session cookie)
-        document.cookie = `auth_token=${data.data.token}; path=/; SameSite=Strict; Secure=${window.location.protocol === 'https:'}`;
+        // Set cookie for middleware (simple, no delays)
+        const isSecure = window.location.protocol === 'https:';
+        const secureFlag = isSecure ? '; Secure' : '';
+        document.cookie = `auth_token=${data.data.token}; path=/; SameSite=Lax; max-age=900${secureFlag}`;
       }
 
       return data;

@@ -15,25 +15,50 @@ export function useAdminAuth() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const token = typeof window !== "undefined" ? sessionStorage.getItem("auth_token") : null;
+        // Wait a bit to ensure sessionStorage is available after redirect
+        await new Promise(resolve => setTimeout(resolve, 50));
         
-        if (!token) {
+        // Check both sessionStorage and cookie for token
+        const token = typeof window !== "undefined" ? sessionStorage.getItem("auth_token") : null;
+        const cookieToken = typeof document !== "undefined" ? 
+          document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1] : null;
+        
+        // Use sessionStorage token first, fallback to cookie
+        const authToken = token || cookieToken;
+        
+        if (!authToken) {
+          console.log("[useAdminAuth] No token found in sessionStorage or cookie, redirecting to login");
+          setIsLoading(false);
+          setIsAuthenticated(false);
           router.push("/login");
           return;
         }
 
+        // If we have cookie token but not sessionStorage, restore it
+        if (!token && cookieToken && typeof window !== "undefined") {
+          sessionStorage.setItem("auth_token", cookieToken);
+          console.log("[useAdminAuth] Restored token from cookie to sessionStorage");
+        }
+
+        console.log("[useAdminAuth] Token found, verifying with backend...");
+
         // Verify token with backend
         const { authAPI } = await import("@/lib/api/auth");
-        await authAPI.getCurrentUser();
+        const userData = await authAPI.getCurrentUser();
         
+        console.log("[useAdminAuth] Token verified, user:", userData);
         setIsAuthenticated(true);
-      } catch (error) {
+      } catch (error: any) {
         // Token invalid or expired
+        console.error("[useAdminAuth] Auth check failed:", error);
         if (typeof window !== "undefined") {
           sessionStorage.removeItem("auth_token");
           sessionStorage.removeItem("csrf_token");
           sessionStorage.removeItem("user");
+          // Clear cookie
+          document.cookie = "auth_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
         }
+        setIsAuthenticated(false);
         router.push("/login");
       } finally {
         setIsLoading(false);

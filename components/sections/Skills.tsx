@@ -30,13 +30,13 @@ export default function Skills() {
           className="space-y-12"
         >
           {/* Professional Header */}
-          <div className="text-center space-y-4">
+          <div className="text-center space-y-3 sm:space-y-4 px-4">
             <motion.div
               initial={{ opacity: 0, y: -20 }}
               animate={isInView ? { opacity: 1, y: 0 } : {}}
               className="inline-block"
             >
-              <h2 className="text-5xl md:text-6xl font-black">
+              <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black">
                 <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600">
                   Skills & Expertise
                 </span>
@@ -46,7 +46,7 @@ export default function Skills() {
               initial={{ opacity: 0 }}
               animate={isInView ? { opacity: 1 } : {}}
               transition={{ delay: 0.2 }}
-              className="text-lg text-gray-400 max-w-2xl mx-auto"
+              className="text-sm sm:text-base md:text-lg text-gray-400 max-w-2xl mx-auto"
             >
               A comprehensive overview of technologies and frameworks I work with
             </motion.p>
@@ -61,7 +61,7 @@ export default function Skills() {
                 transition={{ delay: 0.3 }}
                 className="mb-12"
               >
-                <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 h-auto p-3 bg-transparent border-0">
+                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-3 h-auto p-2 sm:p-3 bg-transparent border-0 overflow-x-auto">
                   {categories.map((category, idx) => {
                     const CategoryIcon = category.icon;
                     const isActive = activeTab === category.id;
@@ -108,7 +108,7 @@ export default function Skills() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4 }}
-                    className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
+                    className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6"
                   >
                     {skillsData
                       .filter((skill) => skill.category === category.id)

@@ -24,14 +24,14 @@ const socialLinks = [
 export default function Footer() {
   return (
     <footer className="bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 md:py-12">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 sm:gap-8">
           {/* Brand */}
           <div>
-            <h3 className="text-2xl font-bold text-gradient mb-4">
+            <h3 className="text-xl sm:text-2xl font-bold text-gradient mb-3 sm:mb-4">
               Mahmoud Haisam
             </h3>
-            <p className="text-gray-600 dark:text-gray-400">
+            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400">
               Computer Engineer • Teaching Assistant
               <br />
               Full-Stack & AI Developer
@@ -40,14 +40,14 @@ export default function Footer() {
 
           {/* Quick Links */}
           <div>
-            <h4 className="text-lg font-semibold mb-4">Quick Links</h4>
+            <h4 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Quick Links</h4>
             <ul className="space-y-2">
               {["Home", "About", "Skills", "Experience", "Projects", "Contact"].map(
                 (link) => (
                   <li key={link}>
                     <Link
                       href={`#${link.toLowerCase()}`}
-                      className="text-gray-600 dark:text-gray-400 hover:text-cyan-400 transition-colors"
+                      className="text-sm sm:text-base text-gray-600 dark:text-gray-400 hover:text-cyan-400 transition-colors block py-1"
                     >
                       {link}
                     </Link>
@@ -59,8 +59,8 @@ export default function Footer() {
 
           {/* Social Links */}
           <div>
-            <h4 className="text-lg font-semibold mb-4">Connect With Me</h4>
-            <div className="flex gap-4">
+            <h4 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Connect With Me</h4>
+            <div className="flex gap-3 sm:gap-4">
               {socialLinks.map((social) => {
                 const Icon = social.icon;
                 return (
@@ -69,7 +69,7 @@ export default function Footer() {
                     href={social.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="p-3 rounded-full glass glow-card hover:scale-110 transition-all"
+                    className="p-3 sm:p-3 rounded-full glass glow-card hover:scale-110 transition-all min-w-[44px] min-h-[44px] flex items-center justify-center"
                     aria-label={social.name}
                   >
                     <Icon className="w-5 h-5" />
@@ -81,9 +81,9 @@ export default function Footer() {
         </div>
 
         {/* Bottom Bar */}
-        <div className="mt-12 pt-8 border-t border-gray-200 dark:border-gray-800">
+        <div className="mt-8 sm:mt-10 md:mt-12 pt-6 sm:pt-8 border-t border-gray-200 dark:border-gray-800">
           <div className="text-center">
-            <p className="text-gray-600 dark:text-gray-400 text-sm">
+            <p className="text-gray-600 dark:text-gray-400 text-xs sm:text-sm">
               © {new Date().getFullYear()} Mahmoud Haisam Mohammed. All rights reserved.
             </p>
           </div>

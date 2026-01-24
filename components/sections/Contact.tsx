@@ -91,31 +91,31 @@ export default function Contact() {
           className="space-y-12"
         >
           {/* Section Header */}
-          <div className="text-center space-y-4">
+          <div className="text-center space-y-3 sm:space-y-4 px-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={isInView ? { opacity: 1, scale: 1 } : {}}
-              className="flex items-center justify-center gap-3"
+              className="flex items-center justify-center gap-2 sm:gap-3"
             >
-              <Sparkles className="w-8 h-8 text-cyan-400" />
-              <h2 className="text-5xl md:text-6xl font-black">
+              <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-cyan-400" />
+              <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black">
                 <span className="bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-600">
                   Let's Connect
                 </span>
               </h2>
-              <Sparkles className="w-8 h-8 text-purple-400" />
+              <Sparkles className="w-6 h-6 sm:w-8 sm:h-8 text-purple-400" />
             </motion.div>
             <motion.p
               initial={{ opacity: 0 }}
               animate={isInView ? { opacity: 1 } : {}}
               transition={{ delay: 0.2 }}
-              className="text-lg text-gray-400 max-w-2xl mx-auto"
+              className="text-sm sm:text-base md:text-lg text-gray-400 max-w-2xl mx-auto"
             >
               Have a project in mind or want to collaborate? Let's make something amazing together!
             </motion.p>
           </div>
 
-          <div className="grid lg:grid-cols-2 gap-12">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 sm:gap-10 md:gap-12">
             {/* Contact Info */}
             <motion.div
               initial={{ opacity: 0, x: -30 }}
@@ -277,7 +277,7 @@ export default function Contact() {
                       value={formData.name}
                       onChange={handleChange}
                       required
-                      className="w-full px-5 py-4 rounded-xl bg-gray-800/50 backdrop-blur-sm border-2 border-gray-700 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent transition-all text-white placeholder:text-gray-500"
+                      className="w-full px-4 sm:px-5 py-3 sm:py-4 rounded-lg sm:rounded-xl bg-gray-800/50 backdrop-blur-sm border-2 border-gray-700 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent transition-all text-sm sm:text-base text-white placeholder:text-gray-500 min-h-[44px]"
                     />
                   </motion.div>
 
@@ -297,7 +297,7 @@ export default function Contact() {
                       value={formData.email}
                       onChange={handleChange}
                       required
-                      className="w-full px-5 py-4 rounded-xl bg-gray-800/50 backdrop-blur-sm border-2 border-gray-700 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent transition-all text-white placeholder:text-gray-500"
+                      className="w-full px-4 sm:px-5 py-3 sm:py-4 rounded-lg sm:rounded-xl bg-gray-800/50 backdrop-blur-sm border-2 border-gray-700 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent transition-all text-sm sm:text-base text-white placeholder:text-gray-500 min-h-[44px]"
                     />
                   </motion.div>
 
@@ -317,7 +317,7 @@ export default function Contact() {
                       onChange={handleChange}
                       required
                       rows={6}
-                      className="w-full px-5 py-4 rounded-xl bg-gray-800/50 backdrop-blur-sm border-2 border-gray-700 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent transition-all resize-none text-white placeholder:text-gray-500"
+                      className="w-full px-4 sm:px-5 py-3 sm:py-4 rounded-lg sm:rounded-xl bg-gray-800/50 backdrop-blur-sm border-2 border-gray-700 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:border-transparent transition-all resize-none text-sm sm:text-base text-white placeholder:text-gray-500 min-h-[120px]"
                     />
                   </motion.div>
 
@@ -332,7 +332,7 @@ export default function Contact() {
                       disabled={isSubmitting || isSubmitted}
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
-                      className="w-full px-8 py-5 rounded-xl relative overflow-hidden font-bold text-xl disabled:opacity-50 disabled:cursor-not-allowed group"
+                      className="w-full px-6 sm:px-8 py-4 sm:py-5 rounded-lg sm:rounded-xl relative overflow-hidden font-bold text-base sm:text-lg md:text-xl disabled:opacity-50 disabled:cursor-not-allowed group min-h-[52px]"
                     >
                       {/* Animated gradient background */}
                       <motion.div

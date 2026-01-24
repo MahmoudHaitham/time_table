@@ -4,7 +4,9 @@ import { Session, Day } from "../entities/Session";
 import { CourseComponent } from "../entities/CourseComponent";
 import { ClassCourse } from "../entities/ClassCourse";
 import { Class } from "../entities/Class";
+import { Term } from "../entities/Term";
 import { Not, IsNull } from "typeorm";
+import * as crypto from "crypto";
 import {
   checkSessionCollision,
   checkDayLimit,
@@ -933,6 +935,134 @@ export const getInstructorSessions = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("Error fetching instructor sessions:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
+  }
+};
+
+/**
+ * Get all instructors with their complete session data (optimized - single query)
+ * Returns data grouped by instructor in the same format as getInstructorSessions
+ * Includes hash for client-side caching
+ */
+export const getAllInstructorsWithSessions = async (req: Request, res: Response) => {
+  try {
+    const sessionRepo = AppDataSource.getRepository(Session);
+    
+    // Single optimized query to get all sessions with instructors and all relations
+    const allSessions = await sessionRepo.find({
+      where: {
+        instructor: Not(IsNull()),
+      },
+      relations: [
+        "component",
+        "component.classCourse",
+        "component.classCourse.course",
+        "component.classCourse.class",
+        "component.classCourse.class.term",
+      ],
+      order: {
+        instructor: "ASC",
+        day: "ASC",
+        slot: "ASC",
+      },
+    });
+
+    // Group sessions by individual instructor (split comma-separated names)
+    const instructorSessionsMap = new Map<string, Array<{
+      id: number;
+      day: string;
+      slot: number;
+      room: string | null;
+      instructor: string;
+      course: {
+        id: number;
+        code: string;
+        name: string;
+        is_elective: boolean;
+      };
+      component: {
+        id: number;
+        component_type: "L" | "S" | "LB";
+      };
+      class: {
+        id: number;
+        class_code: string;
+      };
+      term: {
+        id: number;
+        term_number: string;
+      };
+    }>>();
+
+    allSessions.forEach(session => {
+      if (!session.instructor || !session.instructor.trim()) return;
+
+      const course = session.component.classCourse.course;
+      const classEntity = session.component.classCourse.class;
+      const term = classEntity.term;
+
+      // Split comma-separated instructor names
+      const instructorNames = session.instructor
+        .split(',')
+        .map((inst: string) => inst.trim())
+        .filter((inst: string) => inst.length > 0);
+      
+      // Add session to each individual instructor
+      instructorNames.forEach((instructorName: string) => {
+        if (!instructorSessionsMap.has(instructorName)) {
+          instructorSessionsMap.set(instructorName, []);
+        }
+
+        instructorSessionsMap.get(instructorName)!.push({
+          id: session.id,
+          day: session.day,
+          slot: session.slot,
+          room: session.room,
+          instructor: instructorName,
+          course: {
+            id: course.id,
+            code: course.code,
+            name: course.name,
+            is_elective: course.is_elective || false,
+          },
+          component: {
+            id: session.component.id,
+            component_type: session.component.component_type,
+          },
+          class: {
+            id: classEntity.id,
+            class_code: classEntity.class_code,
+          },
+          term: {
+            id: term.id,
+            term_number: term.term_number,
+          },
+        });
+      });
+    });
+
+    // Convert map to array format: { instructor: string, sessions: InstructorSession[] }
+    const result = Array.from(instructorSessionsMap.entries())
+      .map(([instructorName, sessions]) => ({
+        instructor: instructorName,
+        sessions: sessions,
+      }))
+      .sort((a, b) => a.instructor.localeCompare(b.instructor));
+
+    // Generate hash for caching
+    const dataString = JSON.stringify(result);
+    const hash = crypto.createHash("sha256").update(dataString).digest("hex").substring(0, 16);
+
+    return res.json({
+      success: true,
+      data: result,
+      hash, // Return hash for client-side caching
+    });
+  } catch (error: any) {
+    console.error("Error fetching all instructors with sessions:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Server error",

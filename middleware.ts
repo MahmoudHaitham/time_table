@@ -21,14 +21,34 @@ export function middleware(request: NextRequest) {
       return NextResponse.redirect(loginUrl);
     }
 
-    // Verify token with backend (optional - can be done client-side too)
-    // For now, we'll let the client-side handle verification
-    // But the route is protected from direct access
+    // Create response and ensure cookie is preserved for all admin routes
+    const response = NextResponse.next();
+    
+    // Ensure the auth_token cookie is preserved in the response
+    // This helps with client-side navigation across admin routes
+    response.cookies.set("auth_token", token, {
+      path: "/",
+      sameSite: "lax",
+      maxAge: 900, // 15 minutes
+      httpOnly: false, // Allow client-side access
+      secure: request.nextUrl.protocol === "https:",
+    });
+    
+    // Add security headers
+    addSecurityHeaders(response, request);
+    
+    return response;
   }
 
-  // Add security headers to all responses
+  // Add security headers to all other responses
   const response = NextResponse.next();
-  
+  addSecurityHeaders(response, request);
+
+  return response;
+}
+
+// Helper function to add security headers
+function addSecurityHeaders(response: NextResponse, request: NextRequest) {
   // Content Security Policy
   // Get backend base URL (without /api path) for CSP
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
@@ -58,13 +78,12 @@ export function middleware(request: NextRequest) {
       "max-age=31536000; includeSubDomains"
     );
   }
-
-  return response;
 }
 
 export const config = {
   matcher: [
     "/admin/:path*",
-    "/((?!api|_next/static|_next/image|favicon.ico).*)",
+    // Exclude login, api routes, static files, and Next.js internals
+    "/((?!api|_next/static|_next/image|favicon.ico|login).*)",
   ],
 };

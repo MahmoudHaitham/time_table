@@ -529,27 +529,27 @@ export default function TermDetailsPage() {
   }
 
   return (
-    <div className="min-h-screen p-8">
+    <div className="min-h-screen p-4 sm:p-6 md:p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-6 sm:mb-8"
         >
           <button
             onClick={() => router.push("/admin/timetable")}
-            className="flex items-center gap-2 text-cyan-400 hover:text-cyan-300 mb-4 transition-colors group"
+            className="flex items-center gap-2 text-cyan-400 hover:text-cyan-300 mb-3 sm:mb-4 transition-colors group min-h-[44px]"
           >
-            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-            <span>Back to Terms</span>
+            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 group-hover:-translate-x-1 transition-transform" />
+            <span className="text-sm sm:text-base">Back to Terms</span>
           </button>
-          <div className="flex justify-between items-start">
+          <div className="flex flex-col sm:flex-row justify-between items-start gap-4 sm:gap-0">
             <div>
-              <h1 className="text-5xl font-bold mb-2">
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2">
                 <span className="text-gradient">{term.term_number}</span>
               </h1>
-              <p className="text-gray-400 flex items-center gap-2">
+              <p className="text-gray-400 flex items-center gap-2 text-sm sm:text-base">
                 Status:{" "}
                 <span
                   className={`font-semibold flex items-center gap-2 ${
@@ -558,19 +558,19 @@ export default function TermDetailsPage() {
                 >
                   {term.is_published ? (
                     <>
-                      <CheckCircle2 className="w-4 h-4" />
+                      <CheckCircle2 className="w-3 h-3 sm:w-4 sm:h-4" />
                       Published
                     </>
                   ) : (
                     <>
-                      <AlertCircle className="w-4 h-4" />
+                      <AlertCircle className="w-3 h-3 sm:w-4 sm:h-4" />
                       Draft
                     </>
                   )}
                 </span>
               </p>
             </div>
-            <div className="flex gap-4">
+            <div className="flex flex-wrap gap-2 sm:gap-3 md:gap-4 w-full sm:w-auto">
               <button
                 onClick={handleValidate}
                 className="px-6 py-3 glass border border-white/10 rounded-lg hover:border-blue-500/50 transition-all flex items-center gap-2 group"
@@ -610,7 +610,7 @@ export default function TermDetailsPage() {
         )}
 
         {/* Tabs */}
-        <div className="flex gap-4 mb-6 border-b border-white/10">
+        <div className="flex gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-6 border-b border-white/10 overflow-x-auto pb-2">
           {[
             { id: "classes", label: "Classes", icon: Users },
             { id: "electives", label: "Electives", icon: BookOpen },
@@ -621,13 +621,13 @@ export default function TermDetailsPage() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`px-6 py-3 font-semibold transition-all flex items-center gap-2 ${
+                className={`px-3 sm:px-4 md:px-6 py-2.5 sm:py-3 font-semibold transition-all flex items-center gap-2 text-sm sm:text-base whitespace-nowrap min-h-[44px] ${
                   activeTab === tab.id
                     ? "text-cyan-400 border-b-2 border-cyan-400"
                     : "text-gray-400 hover:text-white"
                 }`}
               >
-                <Icon className="w-5 h-5" />
+                <Icon className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
                 {tab.label}
               </button>
             );
@@ -640,27 +640,28 @@ export default function TermDetailsPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
           >
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-white">Classes</h2>
-              <div className="flex gap-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6">
+              <h2 className="text-xl sm:text-2xl font-bold text-white">Classes</h2>
+              <div className="flex flex-wrap gap-2 sm:gap-3 md:gap-4 w-full sm:w-auto">
                 <button
                   onClick={() => setShowAddCourseModal(true)}
-                  className="px-6 py-3 glass border border-white/10 rounded-lg hover:border-purple-500/50 transition-all flex items-center gap-2 group"
+                  className="px-4 sm:px-5 md:px-6 py-2.5 sm:py-3 glass border border-white/10 rounded-lg hover:border-purple-500/50 transition-all flex items-center gap-2 group text-sm sm:text-base min-h-[44px] flex-1 sm:flex-initial"
                 >
-                  <BookOpen className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                  <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 group-hover:scale-110 transition-transform flex-shrink-0" />
                   <span className="font-semibold text-white">Add Course</span>
                 </button>
                 <button
                   onClick={() => setShowCreateClassModal(true)}
-                  className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-semibold shadow-lg shadow-cyan-500/50 hover:shadow-xl transition-all flex items-center gap-2"
+                  className="px-4 sm:px-5 md:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-semibold shadow-lg shadow-cyan-500/50 hover:shadow-xl transition-all flex items-center gap-2 text-sm sm:text-base min-h-[44px] flex-1 sm:flex-initial"
                 >
-                  <Users className="w-5 h-5" />
-                  Create Class
+                  <Users className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                  <span className="hidden sm:inline">Create Class</span>
+                  <span className="sm:hidden">Create</span>
                 </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
               {classes.map((classItem, index) => (
                 <motion.div
                   key={classItem.id}
@@ -671,24 +672,24 @@ export default function TermDetailsPage() {
                 >
                   <div
                     onClick={() => router.push(`/admin/timetable/classes/${classItem.id}`)}
-                    className="p-6 glass border border-white/10 rounded-xl hover:border-cyan-500/50 transition-all hover:scale-105 cursor-pointer pr-12"
+                    className="p-4 sm:p-5 md:p-6 glass border border-white/10 rounded-lg sm:rounded-xl hover:border-cyan-500/50 transition-all hover:scale-105 cursor-pointer pr-10 sm:pr-12 min-h-[120px]"
                   >
-                    <h3 className="text-xl font-bold text-white mb-2 group-hover:text-gradient transition-colors">
+                    <h3 className="text-lg sm:text-xl font-bold text-white mb-2 group-hover:text-gradient transition-colors break-words">
                       {classItem.class_code}
                     </h3>
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
                       {classItem.system_type && (
-                        <span className="px-2 py-1 bg-cyan-500/20 border border-cyan-500/50 rounded text-cyan-300 text-xs font-semibold">
+                        <span className="px-2 py-1 bg-cyan-500/20 border border-cyan-500/50 rounded text-cyan-300 text-xs font-semibold whitespace-nowrap">
                           System {classItem.system_type}
                         </span>
                       )}
                       {!classItem.system_type && (
-                        <span className="px-2 py-1 bg-gray-500/20 border border-gray-500/50 rounded text-gray-400 text-xs font-semibold">
+                        <span className="px-2 py-1 bg-gray-500/20 border border-gray-500/50 rounded text-gray-400 text-xs font-semibold whitespace-nowrap">
                           No System
                         </span>
                       )}
                     </div>
-                    <p className="text-gray-400 text-sm">Click to manage timetable</p>
+                    <p className="text-gray-400 text-xs sm:text-sm">Click to manage timetable</p>
                   </div>
                   <button
                     onClick={(e) => {

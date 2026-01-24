@@ -21,11 +21,11 @@ export default function About() {
           className="space-y-12"
         >
           {/* Section Header */}
-          <div className="text-center space-y-4">
-            <h2 className="text-4xl md:text-5xl font-bold">
+          <div className="text-center space-y-3 sm:space-y-4">
+            <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold">
               About <span className="text-gradient">Me</span>
             </h2>
-            <p className="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+            <p className="text-sm sm:text-base md:text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto px-4">
               Computer Engineering graduate with a passion for innovation and continuous learning
             </p>
           </div>
@@ -58,7 +58,7 @@ export default function About() {
             </div>
           </motion.div>
 
-          <div className="grid md:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
             {/* Education */}
             <motion.div
               initial={{ opacity: 0, x: -20 }}

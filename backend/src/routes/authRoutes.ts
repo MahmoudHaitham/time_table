@@ -2,6 +2,7 @@ import { Router } from "express";
 import { register, login, getCurrentUser, refreshToken, logout } from "../controllers/authController";
 import { requireAuth } from "../middleware/auth";
 import { rateLimiters, rateLimiter } from "../middleware/rateLimiter";
+import { addCSRFToken } from "../middleware/csrf";
 
 const router = Router();
 
@@ -18,8 +19,8 @@ router.post("/refresh", rateLimiters.refreshToken, refreshToken);
 // POST /auth/logout - Logout
 router.post("/logout", requireAuth, logout);
 
-// GET /auth/me - Get current user (protected)
-router.get("/me", requireAuth, getCurrentUser);
+// GET /auth/me - Get current user (protected) - Add CSRF token to response
+router.get("/me", requireAuth, addCSRFToken, getCurrentUser);
 
 export default router;
 

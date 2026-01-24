@@ -8,6 +8,14 @@ function getCSRFToken(): string | null {
   return null;
 }
 
+// Extract CSRF token from response headers (simple - just store it)
+function extractCSRFToken(response: Response): void {
+  const csrfToken = response.headers.get("X-CSRF-Token");
+  if (csrfToken && typeof window !== "undefined") {
+    sessionStorage.setItem("csrf_token", csrfToken);
+  }
+}
+
 async function fetchAPI(endpoint: string, options: RequestInit = {}) {
   const token = typeof window !== "undefined" ? sessionStorage.getItem("auth_token") : null;
   
@@ -20,7 +28,7 @@ async function fetchAPI(endpoint: string, options: RequestInit = {}) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  // Add CSRF token for state-changing operations
+  // Add CSRF token for state-changing operations (reuse existing token)
   if (["POST", "PUT", "DELETE", "PATCH"].includes(options.method || "")) {
     const csrfToken = getCSRFToken();
     if (csrfToken) {
@@ -28,11 +36,9 @@ async function fetchAPI(endpoint: string, options: RequestInit = {}) {
     }
   }
 
-  // Ensure endpoint doesn't have double slashes or invalid characters
+  // Ensure endpoint doesn't have double slashes
   const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
   const url = `${API_BASE_URL}${cleanEndpoint}`;
-
-  console.log(`[fetchAPI] Making request to: ${url}`, { method: options.method || "GET", headers });
 
   try {
     const response = await fetch(url, {
@@ -41,57 +47,28 @@ async function fetchAPI(endpoint: string, options: RequestInit = {}) {
       credentials: "include",
     });
 
-    console.log(`[fetchAPI] Response status: ${response.status} for ${url}`);
+    // Extract CSRF token from response headers (if present)
+    extractCSRFToken(response);
 
-  if (!response.ok) {
-    let errorData;
-    const contentType = response.headers.get("content-type");
-    try {
-      if (contentType && contentType.includes("application/json")) {
+    if (!response.ok) {
+      let errorData;
+      try {
         errorData = await response.json();
-      } else {
-        const text = await response.text();
-        errorData = { message: text || "Request failed" };
+      } catch {
+        errorData = { message: `Request failed: ${response.status} ${response.statusText}` };
       }
-    } catch (parseError) {
-      errorData = { message: `Request failed: ${response.status} ${response.statusText}` };
+      
+      const errorMessage = errorData?.message || errorData?.error || `Request failed: ${response.status}`;
+      throw new Error(errorMessage);
     }
-    
-    const errorMessage = errorData?.message || errorData?.error || `Request failed: ${response.status} ${response.statusText}`;
-    console.error(`[fetchAPI] Request failed for ${url}:`, {
-      status: response.status,
-      statusText: response.statusText,
-      error: errorMessage,
-      errorData,
-      endpoint,
-      url,
-      contentType,
-    });
-    throw new Error(errorMessage);
-  }
 
     const data = await response.json();
-    console.log(`[fetchAPI] Success for ${url}:`, data);
     return data;
   } catch (error: any) {
-    // Handle network errors and other exceptions
-    const errorMessage = error?.message || error?.toString() || "Network error - Could not connect to server";
-    const isNetworkError = errorMessage.includes("fetch") || errorMessage.includes("network") || errorMessage.includes("Failed to fetch");
-    
-    console.error(`[fetchAPI] Exception caught for ${url}:`, {
-      message: errorMessage,
-      stack: error?.stack,
-      endpoint,
-      url,
-      options,
-      isNetworkError,
-    });
-    
-    // Provide more helpful error messages
-    if (isNetworkError || !error?.message) {
+    const errorMessage = error?.message || "Network error";
+    if (errorMessage.includes("fetch") || errorMessage.includes("network")) {
       throw new Error(`Unable to connect to server. Please make sure the backend is running at ${API_BASE_URL}`);
     }
-    
     throw error;
   }
 }
@@ -139,6 +116,7 @@ export const classesAPI = {
 // Courses API
 export const coursesAPI = {
   getAll: () => fetchAPI("/courses"),
+  getAllWithAssignments: () => fetchAPI("/courses/with-assignments"), // Optimized endpoint - returns all data in one request
   getById: (id: number) => fetchAPI(`/courses/${id}`),
   create: (data: { code: string; name: string; is_elective?: boolean; components?: string[] }) =>
     fetchAPI("/courses", { method: "POST", body: JSON.stringify(data) }),
@@ -185,6 +163,7 @@ export const sessionsAPI = {
   },
   getAllInstructors: () => fetchAPI("/sessions/instructors"),
   getAllInstructorsSchedule: () => fetchAPI("/sessions/instructors/schedule"),
+  getAllInstructorsWithSessions: () => fetchAPI("/sessions/instructors/with-sessions"), // Optimized endpoint - returns all data in one request with hash
   getByInstructor: (instructorName: string) => {
     const encodedName = encodeURIComponent(instructorName);
     return fetchAPI(`/sessions/instructor/${encodedName}`);

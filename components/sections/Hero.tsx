@@ -47,43 +47,43 @@ export default function Hero() {
       </div>
 
       {/* Content */}
-      <div className="max-w-6xl mx-auto px-6 py-20 relative z-10">
-        <div className="space-y-16">
+      <div className="container-responsive py-12 sm:py-16 md:py-20 lg:py-24 relative z-10">
+        <div className="space-y-8 sm:space-y-12 md:space-y-16">
           
           {/* Professional Header */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
-            className="space-y-6"
+            className="space-y-4 sm:space-y-6"
           >
             {/* Status Badge */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <div className="h-2 w-2 rounded-full bg-green-400 animate-pulse" />
-              <span className="text-sm text-gray-400 font-medium uppercase tracking-wider">
+              <span className="text-xs sm:text-sm text-gray-400 font-medium uppercase tracking-wider">
                 Open to opportunities
               </span>
             </div>
 
             {/* Name - Clean and professional */}
-            <h1 className="text-5xl md:text-7xl font-bold text-white leading-tight tracking-tight">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold text-white leading-tight tracking-tight">
               Mahmoud Haisam Mohammed
             </h1>
 
             {/* Title - Clear hierarchy */}
-            <p className="text-2xl md:text-3xl text-gray-400 font-light">
+            <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl text-gray-400 font-light">
               Computer Engineer & Full-Stack Developer
             </p>
 
             {/* Location & Role */}
-            <div className="flex flex-wrap items-center gap-6 text-gray-500">
+            <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3 sm:gap-4 md:gap-6 text-gray-500">
               <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4" />
-                <span className="text-sm">Alexandria, Egypt</span>
+                <MapPin className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="text-xs sm:text-sm">Alexandria, Egypt</span>
               </div>
               <div className="flex items-center gap-2">
-                <Briefcase className="w-4 h-4" />
-                <span className="text-sm">Teaching Assistant at AASTMT</span>
+                <Briefcase className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="text-xs sm:text-sm">Teaching Assistant at AASTMT</span>
               </div>
             </div>
           </motion.div>
@@ -95,7 +95,7 @@ export default function Hero() {
             transition={{ delay: 0.3 }}
             className="max-w-3xl"
           >
-            <p className="text-lg text-gray-400 leading-relaxed">
+            <p className="text-sm sm:text-base md:text-lg text-gray-400 leading-relaxed">
               Experienced software engineer specializing in full-stack development, AI/ML solutions, 
               and system architecture. Proven track record of delivering scalable applications using 
               modern technologies including React, Node.js, and Python.
@@ -107,7 +107,7 @@ export default function Hero() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5 }}
-            className="grid md:grid-cols-4 gap-4"
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4"
           >
             {[
               { title: "Full-Stack Development", desc: "React, Next.js, Node.js" },
@@ -121,9 +121,9 @@ export default function Hero() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.6 + i * 0.1 }}
                 whileHover={{ y: -4, borderColor: "rgba(6, 182, 212, 0.5)" }}
-                className="p-5 border border-gray-800 hover:bg-gray-900/50 transition-all rounded-lg"
+                className="p-4 sm:p-5 border border-gray-800 hover:bg-gray-900/50 transition-all rounded-lg"
               >
-                <h3 className="text-white font-semibold mb-2 text-sm">{area.title}</h3>
+                <h3 className="text-white font-semibold mb-2 text-xs sm:text-sm">{area.title}</h3>
                 <p className="text-gray-500 text-xs leading-relaxed">{area.desc}</p>
               </motion.div>
             ))}
@@ -134,7 +134,7 @@ export default function Hero() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 1 }}
-            className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6"
+            className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 md:gap-6"
           >
             {[
               { value: "3.71", label: "GPA", sublabel: "Excellent with Honor" },
@@ -148,10 +148,10 @@ export default function Hero() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 1.1 + i * 0.1 }}
                 whileHover={{ y: -4, borderColor: "rgba(6, 182, 212, 0.5)" }}
-                className="p-6 border border-gray-800 hover:bg-gray-900/50 transition-all rounded-lg text-center"
+                className="p-4 sm:p-5 md:p-6 border border-gray-800 hover:bg-gray-900/50 transition-all rounded-lg text-center"
               >
-                <div className="text-4xl font-bold text-cyan-400 mb-2">{stat.value}</div>
-                <div className="text-white text-sm font-semibold mb-1">{stat.label}</div>
+                <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-cyan-400 mb-2">{stat.value}</div>
+                <div className="text-white text-xs sm:text-sm font-semibold mb-1">{stat.label}</div>
                 <div className="text-gray-600 text-xs">{stat.sublabel}</div>
               </motion.div>
             ))}
@@ -162,7 +162,7 @@ export default function Hero() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 1.8 }}
-            className="flex items-center justify-center gap-6 pt-8"
+            className="flex items-center justify-center gap-4 sm:gap-6 pt-6 sm:pt-8"
           >
             {[
               { 
@@ -204,8 +204,8 @@ export default function Hero() {
                   aria-label={social.label}
                 >
                   {/* Main icon container with gradient */}
-                  <div className={`relative p-5 rounded-2xl bg-gradient-to-br ${social.color} shadow-lg group-hover:shadow-2xl transition-all`}>
-                    <social.icon className="w-6 h-6 text-white relative z-10" />
+                  <div className={`relative p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-gradient-to-br ${social.color} shadow-lg group-hover:shadow-2xl transition-all`}>
+                    <social.icon className="w-5 h-5 sm:w-6 sm:h-6 text-white relative z-10" />
                     
                     {/* Pulsing glow effect */}
                     <motion.div

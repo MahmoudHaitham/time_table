@@ -50,19 +50,19 @@ export default function Navbar() {
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+        <div className="flex items-center justify-between h-14 sm:h-16">
           {/* Logo */}
-          <Link href="/" className="text-2xl font-bold">
+          <Link href="/" className="text-xl sm:text-2xl font-bold">
             <span className="text-gradient">MH</span>
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-8">
+          <div className="hidden md:flex items-center space-x-6 lg:space-x-8">
             {navLinks.map((link) => (
               <Link
                 key={link.name}
                 href={link.href}
-                className={`text-sm font-medium transition-colors hover:text-cyan-400 relative ${
+                className={`text-sm lg:text-base font-medium transition-colors hover:text-cyan-400 relative ${
                   activeSection === link.href.substring(1)
                     ? "text-cyan-400"
                     : "text-gray-300"
@@ -83,9 +83,10 @@ export default function Navbar() {
           <div className="md:hidden flex items-center gap-2">
             <button
               onClick={() => setIsOpen(!isOpen)}
-              className="p-2 rounded-lg text-gray-300"
+              className="p-2 sm:p-2.5 rounded-lg text-gray-300 hover:bg-white/10 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+              aria-label="Toggle menu"
             >
-              {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              {isOpen ? <X className="w-5 h-5 sm:w-6 sm:h-6" /> : <Menu className="w-5 h-5 sm:w-6 sm:h-6" />}
             </button>
           </div>
         </div>
@@ -106,7 +107,7 @@ export default function Navbar() {
                   key={link.name}
                   href={link.href}
                   onClick={() => setIsOpen(false)}
-                  className={`block px-3 py-2 rounded-md text-base font-medium ${
+                  className={`block px-4 py-3 rounded-md text-base font-medium min-h-[44px] flex items-center ${
                     activeSection === link.href.substring(1)
                       ? "text-cyan-400 bg-cyan-400/10"
                       : "text-gray-300 hover:bg-gray-800"

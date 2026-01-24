@@ -31,17 +31,17 @@ export default function Projects() {
           className="space-y-12"
         >
           {/* Section Header */}
-          <div className="text-center space-y-4">
-            <h2 className="text-4xl md:text-5xl font-bold">
+          <div className="text-center space-y-3 sm:space-y-4 px-4">
+            <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold">
               Featured <span className="text-gradient">Projects</span>
             </h2>
-            <p className="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+            <p className="text-sm sm:text-base md:text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
               A showcase of my work spanning web applications, AI/ML, and embedded systems
             </p>
           </div>
 
           {/* Filter Buttons */}
-          <div className="flex flex-wrap justify-center gap-3">
+          <div className="flex flex-wrap justify-center gap-2 sm:gap-3 px-4">
             {projectCategories.map((category, idx) => (
               <motion.button
                 key={category}
@@ -49,7 +49,7 @@ export default function Projects() {
                 animate={isInView ? { opacity: 1, scale: 1 } : {}}
                 transition={{ delay: idx * 0.05 }}
                 onClick={() => setActiveFilter(category)}
-                className={`px-5 py-2.5 rounded-full text-sm font-medium transition-all ${
+                className={`px-4 sm:px-5 py-2 sm:py-2.5 rounded-full text-xs sm:text-sm font-medium transition-all min-h-[44px] flex items-center justify-center ${
                   activeFilter === category
                     ? "animated-gradient text-white shadow-lg shadow-cyan-500/50 scale-105"
                     : "glass-strong glow-card hover:scale-105"

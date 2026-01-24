@@ -155,21 +155,25 @@ app.use("/api/timetable", rateLimiters.timetable, timetableViewRoutes);
 // Admin API Routes (protected - require authentication + CSRF)
 // IMPORTANT: More specific routes must be registered BEFORE less specific ones
 // Routes with parameters - must be registered with proper path handling (protected)
-// Add CSRF token to responses for authenticated users
-app.use("/api/classes", requireAuth, addCSRFToken, validateCSRFToken, requireAdmin, classDirectRoutes);
-app.use("/api/terms/:termId/classes", requireAuth, addCSRFToken, validateCSRFToken, requireAdmin, classRoutes);
-app.use("/api/terms/:termId/electives", requireAuth, addCSRFToken, validateCSRFToken, requireAdmin, electiveRoutes);
+// CSRF token flow: 
+//   - validateCSRFToken: validates POST/PUT/DELETE/PATCH and generates new token
+//   - addCSRFToken: ensures GET requests also get tokens (only if not already set)
+// Order: requireAuth -> validateCSRFToken -> addCSRFToken -> requireAdmin
+// NOTE: /api/classes/:classId/courses must come BEFORE /api/classes to avoid route conflicts
+app.use("/api/classes/:classId/courses", requireAuth, validateCSRFToken, addCSRFToken, requireAdmin, classCourseRoutes);
+app.use("/api/terms/:termId/classes", requireAuth, validateCSRFToken, addCSRFToken, requireAdmin, classRoutes);
+app.use("/api/terms/:termId/electives", requireAuth, validateCSRFToken, addCSRFToken, requireAdmin, electiveRoutes);
 // Less specific routes come after
-app.use("/api/terms", requireAuth, addCSRFToken, validateCSRFToken, requireAdmin, termRoutes);
-app.use("/api/courses", requireAuth, addCSRFToken, validateCSRFToken, requireAdmin, courseRoutes);
-app.use("/api/classes/:classId/courses", requireAuth, addCSRFToken, validateCSRFToken, requireAdmin, classCourseRoutes);
-app.use("/api/class-courses", requireAuth, addCSRFToken, validateCSRFToken, requireAdmin, classCourseDirectRouter);
-app.use("/api/class-courses/:id/components", requireAuth, addCSRFToken, validateCSRFToken, requireAdmin, componentRoutes);
-app.use("/api/components/:componentId/sessions", requireAuth, addCSRFToken, validateCSRFToken, requireAdmin, sessionRoutes);
+app.use("/api/terms", requireAuth, validateCSRFToken, addCSRFToken, requireAdmin, termRoutes);
+app.use("/api/courses", requireAuth, validateCSRFToken, addCSRFToken, requireAdmin, courseRoutes);
+app.use("/api/classes", requireAuth, validateCSRFToken, addCSRFToken, requireAdmin, classDirectRoutes);
+app.use("/api/class-courses", requireAuth, validateCSRFToken, addCSRFToken, requireAdmin, classCourseDirectRouter);
+app.use("/api/class-courses/:id/components", requireAuth, validateCSRFToken, addCSRFToken, requireAdmin, componentRoutes);
+app.use("/api/components/:componentId/sessions", requireAuth, validateCSRFToken, addCSRFToken, requireAdmin, sessionRoutes);
 // Direct session routes (for DELETE and PUT operations by session ID)
-app.use("/api/sessions", requireAuth, addCSRFToken, validateCSRFToken, requireAdmin, sessionDirectRoutes);
+app.use("/api/sessions", requireAuth, validateCSRFToken, addCSRFToken, requireAdmin, sessionDirectRoutes);
 // Other Departments routes
-app.use("/api/other-dept", requireAuth, addCSRFToken, validateCSRFToken, requireAdmin, otherDeptRoutes);
+app.use("/api/other-dept", requireAuth, validateCSRFToken, addCSRFToken, requireAdmin, otherDeptRoutes);
 
 // Health check
 app.get("/", (req: Request, res: Response) => {

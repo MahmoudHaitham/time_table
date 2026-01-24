@@ -26,19 +26,38 @@ export default function TimetableAdminPage() {
   const [deletingTermId, setDeletingTermId] = useState<number | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
 
+  const { isAuthenticated, isLoading } = useAdminAuth();
+
   useEffect(() => {
-    // Check authentication
-    const token = localStorage.getItem("auth_token");
-    if (!token) {
-      router.push("/login");
+    // Show loading state while checking auth
+    if (isLoading) {
       return;
     }
+    
+    // Redirect handled by useAdminAuth, but if not authenticated, don't load
+    if (!isAuthenticated) {
+      return;
+    }
+    
+    // Only load terms if authenticated
     loadTerms();
-  }, [router]);
+  }, [isLoading, isAuthenticated]);
 
-  const handleLogout = () => {
-    localStorage.removeItem("auth_token");
-    localStorage.removeItem("user");
+  const handleLogout = async () => {
+    try {
+      const { authAPI } = await import("@/lib/api/auth");
+      await authAPI.logout();
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+    // Clear all storage
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("auth_token");
+      sessionStorage.removeItem("csrf_token");
+      sessionStorage.removeItem("user");
+      localStorage.removeItem("auth_token");
+      localStorage.removeItem("user");
+    }
     router.push("/login");
   };
 
@@ -99,7 +118,8 @@ export default function TimetableAdminPage() {
     }
   };
 
-  if (loading) {
+  // Show loading while checking auth or loading terms
+  if (isLoading || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <motion.div
@@ -108,62 +128,70 @@ export default function TimetableAdminPage() {
           className="text-center"
         >
           <div className="w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-white text-xl">Loading...</p>
+          <p className="text-white text-xl">
+            {isLoading ? "Verifying authentication..." : "Loading..."}
+          </p>
         </motion.div>
       </div>
     );
   }
 
+  // If not authenticated, don't render (redirect handled by useAdminAuth)
+  if (!isAuthenticated) {
+    return null;
+  }
+
   return (
-    <div className="min-h-screen p-8">
+    <div className="min-h-screen p-4 sm:p-6 md:p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex justify-between items-center mb-8"
+          className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sm:gap-0 mb-6 sm:mb-8"
         >
           <div>
-            <h1 className="text-5xl font-bold mb-2">
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2">
               <span className="text-gradient">Timetable</span> Management
             </h1>
-            <p className="text-gray-400">Manage academic terms and schedules</p>
+            <p className="text-gray-400 text-sm sm:text-base">Manage academic terms and schedules</p>
           </div>
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-2 sm:gap-3 md:gap-4 w-full sm:w-auto">
             <Link
               href="/admin/timetable/courses"
-              className="px-6 py-3 glass border border-white/10 rounded-lg hover:border-purple-500/50 transition-all flex items-center gap-2 group"
+              className="px-4 sm:px-5 md:px-6 py-2.5 sm:py-3 glass border border-white/10 rounded-lg hover:border-purple-500/50 transition-all flex items-center gap-2 group text-sm sm:text-base min-h-[44px]"
             >
-              <BookOpen className="w-5 h-5 group-hover:scale-110 transition-transform" />
-              <span className="font-semibold text-white">Courses</span>
+              <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 group-hover:scale-110 transition-transform flex-shrink-0" />
+              <span className="font-semibold text-white hidden sm:inline">Courses</span>
             </Link>
             <Link
               href="/admin/timetable/instructors"
-              className="px-6 py-3 glass border border-white/10 rounded-lg hover:border-orange-500/50 transition-all flex items-center gap-2 group"
+              className="px-4 sm:px-5 md:px-6 py-2.5 sm:py-3 glass border border-white/10 rounded-lg hover:border-orange-500/50 transition-all flex items-center gap-2 group text-sm sm:text-base min-h-[44px]"
             >
-              <User className="w-5 h-5 group-hover:scale-110 transition-transform" />
-              <span className="font-semibold text-white">Instructors</span>
+              <User className="w-4 h-4 sm:w-5 sm:h-5 group-hover:scale-110 transition-transform flex-shrink-0" />
+              <span className="font-semibold text-white hidden sm:inline">Instructors</span>
             </Link>
             <Link
               href="/admin/timetable/coursesForOtherDept"
-              className="px-6 py-3 glass border border-white/10 rounded-lg hover:border-green-500/50 transition-all flex items-center gap-2 group"
+              className="px-4 sm:px-5 md:px-6 py-2.5 sm:py-3 glass border border-white/10 rounded-lg hover:border-green-500/50 transition-all flex items-center gap-2 group text-sm sm:text-base min-h-[44px]"
             >
-              <BookOpen className="w-5 h-5 group-hover:scale-110 transition-transform" />
-              <span className="font-semibold text-white">Other Depts</span>
+              <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 group-hover:scale-110 transition-transform flex-shrink-0" />
+              <span className="font-semibold text-white hidden sm:inline">Other Depts</span>
             </Link>
             <button
               onClick={() => setShowCreateModal(true)}
-              className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-semibold shadow-lg shadow-cyan-500/50 hover:shadow-xl hover:shadow-cyan-500/50 transition-all flex items-center gap-2"
+              className="px-4 sm:px-5 md:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-semibold shadow-lg shadow-cyan-500/50 hover:shadow-xl hover:shadow-cyan-500/50 transition-all flex items-center gap-2 text-sm sm:text-base min-h-[44px]"
             >
-              <Plus className="w-5 h-5" />
-              Create Term
+              <Plus className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+              <span className="hidden sm:inline">Create Term</span>
+              <span className="sm:hidden">Create</span>
             </button>
             <button
               onClick={handleLogout}
-              className="px-6 py-3 glass border border-white/10 rounded-lg hover:border-red-500/50 transition-all flex items-center gap-2 group"
+              className="px-4 sm:px-5 md:px-6 py-2.5 sm:py-3 glass border border-white/10 rounded-lg hover:border-red-500/50 transition-all flex items-center gap-2 group text-sm sm:text-base min-h-[44px]"
             >
-              <LogOut className="w-5 h-5 group-hover:scale-110 transition-transform" />
-              <span className="font-semibold text-white">Logout</span>
+              <LogOut className="w-4 h-4 sm:w-5 sm:h-5 group-hover:scale-110 transition-transform flex-shrink-0" />
+              <span className="font-semibold text-white hidden sm:inline">Logout</span>
             </button>
           </div>
         </motion.div>
@@ -188,17 +216,17 @@ export default function TimetableAdminPage() {
               transition={{ delay: index * 0.1 }}
               className="relative group"
             >
-              <div className="p-6 glass border border-white/10 rounded-xl hover:border-cyan-500/50 transition-all relative">
+              <div className="p-4 sm:p-5 md:p-6 glass border border-white/10 rounded-lg sm:rounded-xl hover:border-cyan-500/50 transition-all relative">
                 <Link
                   href={`/admin/timetable/terms/${term.id}`}
-                  className="block pr-12"
+                  className="block pr-10 sm:pr-12"
                 >
-                  <div className="flex justify-between items-start mb-4">
-                    <h2 className="text-2xl font-bold text-white group-hover:text-gradient transition-colors">
+                  <div className="flex justify-between items-start mb-3 sm:mb-4 gap-2">
+                    <h2 className="text-xl sm:text-2xl font-bold text-white group-hover:text-gradient transition-colors break-words">
                       {term.term_number}
                     </h2>
                     <span
-                      className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                      className={`px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-semibold whitespace-nowrap flex-shrink-0 ${
                         term.is_published
                           ? "bg-green-500/20 text-green-400 border border-green-500/50"
                           : "bg-yellow-500/20 text-yellow-400 border border-yellow-500/50"
@@ -207,7 +235,7 @@ export default function TimetableAdminPage() {
                       {term.is_published ? "Published" : "Draft"}
                     </span>
                   </div>
-                  <p className="text-gray-400 text-sm">
+                  <p className="text-gray-400 text-xs sm:text-sm">
                     Created: {new Date(term.createdAt).toLocaleDateString()}
                   </p>
                 </Link>

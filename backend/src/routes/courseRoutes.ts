@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   createCourse,
   getAllCourses,
+  getAllCoursesWithAssignments,
   getCourseById,
   updateCourse,
   deleteCourse,
@@ -15,6 +16,9 @@ router.post("/", validateCourseInput, createCourse);
 
 // GET /courses - Get all courses
 router.get("/", getAllCourses);
+
+// GET /courses/with-assignments - Get all courses with complete assignment data (optimized)
+router.get("/with-assignments", getAllCoursesWithAssignments);
 
 // GET /courses/:id - Get course by ID
 router.get("/:id", validateIdParam("id"), getCourseById);
