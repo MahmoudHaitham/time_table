@@ -62,14 +62,10 @@ export default function InstructorSchedulePage() {
   const [downloadingAllPDF, setDownloadingAllPDF] = useState(false);
 
   useEffect(() => {
-    // Check authentication
-    const token = localStorage.getItem("auth_token");
-    if (!token) {
-      router.push("/login");
-      return;
-    }
+    // Auth is already handled by admin layout (useAdminAuth)
+    // Just load instructors data
     loadInstructors();
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     if (selectedInstructor) {

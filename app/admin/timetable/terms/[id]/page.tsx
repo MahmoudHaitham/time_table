@@ -82,13 +82,7 @@ export default function TermDetailsPage() {
   });
 
   useEffect(() => {
-    // Check authentication
-    const token = localStorage.getItem("auth_token");
-    if (!token) {
-      router.push("/login");
-      return;
-    }
-    
+    // Auth is already handled by admin layout (useAdminAuth)
     // Validate termIdParam exists
     if (!termIdParam || termIdParam.trim() === "") {
       setError("Term ID is required");

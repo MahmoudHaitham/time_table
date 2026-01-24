@@ -142,8 +142,8 @@ export default function TimetableAdminPage() {
   }
 
   return (
-    <div className="min-h-screen p-4 sm:p-6 md:p-8">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen p-3 sm:p-4 md:p-6 lg:p-8">
+      <div className="w-full max-w-screen-2xl mx-auto">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -200,7 +200,7 @@ export default function TimetableAdminPage() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="mb-6 p-4 bg-red-500/20 border border-red-500 rounded-lg text-red-200"
+            className="mb-4 sm:mb-6 p-3 sm:p-4 bg-red-500/20 border border-red-500 rounded-lg text-red-200 text-sm sm:text-base break-words"
           >
             {error}
           </motion.div>
@@ -260,7 +260,7 @@ export default function TimetableAdminPage() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-center py-12 text-gray-400"
+            className="text-center py-8 sm:py-10 md:py-12 text-gray-400 text-sm sm:text-base break-words px-4"
           >
             No terms found. Create your first term to get started.
           </motion.div>
@@ -269,29 +269,29 @@ export default function TimetableAdminPage() {
 
       {/* Create Term Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3 sm:p-4">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="glass backdrop-blur-xl border border-white/10 rounded-2xl p-6 w-full max-w-md shadow-2xl"
+            className="glass backdrop-blur-xl border border-white/10 rounded-xl sm:rounded-2xl p-4 sm:p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto"
           >
-            <h2 className="text-2xl font-bold text-white mb-4">Create New Term</h2>
+            <h2 className="text-xl sm:text-2xl font-bold text-white mb-3 sm:mb-4 break-words">Create New Term</h2>
             <form onSubmit={handleCreateTerm}>
               <div className="mb-4">
-                <label className="block text-gray-300 mb-2">Term Number</label>
+                <label className="block text-gray-300 mb-2 text-sm sm:text-base">Term Number</label>
                 <input
                   type="text"
                   value={newTermNumber}
                   onChange={(e) => setNewTermNumber(e.target.value)}
-                  className="w-full px-4 py-2 glass border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+                  className="w-full px-3 sm:px-4 py-2 glass border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition-all text-sm sm:text-base min-h-[44px]"
                   placeholder="e.g., 2024-2025-1"
                   required
                 />
               </div>
-              <div className="flex gap-4">
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-semibold shadow-lg shadow-cyan-500/50 hover:shadow-xl transition-all"
+                  className="flex-1 px-4 py-2.5 sm:py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-semibold shadow-lg shadow-cyan-500/50 hover:shadow-xl transition-all text-sm sm:text-base min-h-[44px]"
                 >
                   Create
                 </button>
@@ -301,7 +301,7 @@ export default function TimetableAdminPage() {
                     setShowCreateModal(false);
                     setNewTermNumber("");
                   }}
-                  className="flex-1 px-4 py-2 glass border border-white/10 rounded-lg font-semibold text-white hover:border-gray-500/50 transition-all"
+                  className="flex-1 px-4 py-2.5 sm:py-3 glass border border-white/10 rounded-lg font-semibold text-white hover:border-gray-500/50 transition-all text-sm sm:text-base min-h-[44px]"
                 >
                   Cancel
                 </button>
@@ -313,41 +313,41 @@ export default function TimetableAdminPage() {
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3 sm:p-4">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="glass backdrop-blur-xl border border-white/10 rounded-2xl p-6 w-full max-w-md shadow-2xl"
+            className="glass backdrop-blur-xl border border-white/10 rounded-xl sm:rounded-2xl p-4 sm:p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto"
           >
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-3 bg-red-500/20 rounded-lg">
-                <Trash2 className="w-6 h-6 text-red-400" />
+            <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+              <div className="p-2 sm:p-3 bg-red-500/20 rounded-lg flex-shrink-0">
+                <Trash2 className="w-5 h-5 sm:w-6 sm:h-6 text-red-400" />
               </div>
-              <h2 className="text-2xl font-bold text-white">Delete Term</h2>
+              <h2 className="text-xl sm:text-2xl font-bold text-white break-words">Delete Term</h2>
             </div>
-            <p className="text-gray-300 mb-6">
+            <p className="text-gray-300 mb-4 sm:mb-6 text-sm sm:text-base break-words">
               Are you sure you want to delete this term? This action cannot be undone.
               {terms.find(t => t.id === showDeleteConfirm)?.is_published && (
-                <span className="block mt-2 text-yellow-400 font-semibold">
+                <span className="block mt-2 text-yellow-400 font-semibold text-xs sm:text-sm break-words">
                   ⚠️ This term is published. Deleting it will make it unavailable to students.
                 </span>
               )}
             </p>
-            <div className="flex gap-4">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
               <button
                 onClick={() => handleDeleteTerm(showDeleteConfirm)}
                 disabled={deletingTermId === showDeleteConfirm}
-                className="flex-1 px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg font-semibold shadow-lg shadow-red-500/50 hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="flex-1 px-4 py-2.5 sm:py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg font-semibold shadow-lg shadow-red-500/50 hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base min-h-[44px]"
               >
                 {deletingTermId === showDeleteConfirm ? (
                   <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Deleting...
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin flex-shrink-0"></div>
+                    <span className="break-words">Deleting...</span>
                   </>
                 ) : (
                   <>
-                    <Trash2 className="w-4 h-4" />
-                    Delete
+                    <Trash2 className="w-4 h-4 flex-shrink-0" />
+                    <span className="break-words">Delete</span>
                   </>
                 )}
               </button>
@@ -357,7 +357,7 @@ export default function TimetableAdminPage() {
                   setError(null);
                 }}
                 disabled={deletingTermId === showDeleteConfirm}
-                className="flex-1 px-4 py-2 glass border border-white/10 rounded-lg font-semibold text-white hover:border-gray-500/50 transition-all disabled:opacity-50"
+                className="flex-1 px-4 py-2.5 sm:py-3 glass border border-white/10 rounded-lg font-semibold text-white hover:border-gray-500/50 transition-all disabled:opacity-50 text-sm sm:text-base min-h-[44px]"
               >
                 Cancel
               </button>

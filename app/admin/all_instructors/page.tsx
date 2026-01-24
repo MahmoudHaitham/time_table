@@ -23,14 +23,9 @@ export default function AllInstructorsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Check authentication
-    const token = localStorage.getItem("auth_token");
-    if (!token) {
-      router.push("/login");
-      return;
-    }
+    // Auth is already handled by admin layout (useAdminAuth)
     loadInstructorsSchedule();
-  }, [router]);
+  }, []);
 
   const loadInstructorsSchedule = async () => {
     try {

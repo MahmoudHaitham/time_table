@@ -26,7 +26,7 @@ export default function Hero() {
             opacity: [0.2, 0.35, 0.2],
           }}
           transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-cyan-500/25 rounded-full blur-3xl"
+          className="absolute top-1/4 left-1/4 w-[300px] h-[300px] sm:w-[400px] sm:h-[400px] md:w-[500px] md:h-[500px] bg-cyan-500/25 rounded-full blur-3xl"
         />
         <motion.div
           animate={{
@@ -34,7 +34,7 @@ export default function Hero() {
             opacity: [0.25, 0.4, 0.25],
           }}
           transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-purple-500/25 rounded-full blur-3xl"
+          className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] sm:w-[400px] sm:h-[400px] md:w-[500px] md:h-[500px] bg-purple-500/25 rounded-full blur-3xl"
         />
         <motion.div
           animate={{
@@ -42,7 +42,7 @@ export default function Hero() {
             opacity: [0.2, 0.35, 0.2],
           }}
           transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-500/25 rounded-full blur-3xl"
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[350px] h-[350px] sm:w-[450px] sm:h-[450px] md:w-[600px] md:h-[600px] bg-blue-500/25 rounded-full blur-3xl"
         />
       </div>
 
@@ -95,7 +95,7 @@ export default function Hero() {
             transition={{ delay: 0.3 }}
             className="max-w-3xl"
           >
-            <p className="text-sm sm:text-base md:text-lg text-gray-400 leading-relaxed">
+            <p className="text-sm sm:text-base md:text-lg text-gray-400 leading-relaxed break-words">
               Experienced software engineer specializing in full-stack development, AI/ML solutions, 
               and system architecture. Proven track record of delivering scalable applications using 
               modern technologies including React, Node.js, and Python.
@@ -123,8 +123,8 @@ export default function Hero() {
                 whileHover={{ y: -4, borderColor: "rgba(6, 182, 212, 0.5)" }}
                 className="p-4 sm:p-5 border border-gray-800 hover:bg-gray-900/50 transition-all rounded-lg"
               >
-                <h3 className="text-white font-semibold mb-2 text-xs sm:text-sm">{area.title}</h3>
-                <p className="text-gray-500 text-xs leading-relaxed">{area.desc}</p>
+                <h3 className="text-white font-semibold mb-2 text-xs sm:text-sm break-words">{area.title}</h3>
+                <p className="text-gray-500 text-xs leading-relaxed break-words">{area.desc}</p>
               </motion.div>
             ))}
           </motion.div>
@@ -150,9 +150,9 @@ export default function Hero() {
                 whileHover={{ y: -4, borderColor: "rgba(6, 182, 212, 0.5)" }}
                 className="p-4 sm:p-5 md:p-6 border border-gray-800 hover:bg-gray-900/50 transition-all rounded-lg text-center"
               >
-                <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-cyan-400 mb-2">{stat.value}</div>
-                <div className="text-white text-xs sm:text-sm font-semibold mb-1">{stat.label}</div>
-                <div className="text-gray-600 text-xs">{stat.sublabel}</div>
+                <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-cyan-400 mb-2 break-words">{stat.value}</div>
+                <div className="text-white text-xs sm:text-sm font-semibold mb-1 break-words">{stat.label}</div>
+                <div className="text-gray-600 text-xs break-words">{stat.sublabel}</div>
               </motion.div>
             ))}
           </motion.div>

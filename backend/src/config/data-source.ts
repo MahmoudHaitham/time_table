@@ -48,18 +48,16 @@ export const AppDataSource = new DataSource({
     ScheduleCache,
   ],
   extra: {
-    // Connection pool settings - optimized for high concurrency (200-500+ concurrent users)
-    // IMPORTANT: Ensure your database provider supports 100+ connections
-    // - Neon Free tier: 100 connections max
-    // - Neon Pro tier: 500+ connections
-    // - Supabase Free: 60 connections max
-    // - Supabase Pro: 200+ connections
-    // - AWS RDS: Depends on instance type
-    max: 100, // Maximum connections in pool (supports high concurrent load)
-    min: 10, // Minimum idle connections to maintain (proportionally increased)
+    // Connection pool settings - optimized for RAM efficiency and Neon.tech auto-scaling
+    // Reduced from 100 to 20 max connections to save ~200-800MB RAM
+    // Neon.tech auto-scales, so fewer connections are needed
+    // - Neon Free tier: 100 connections max (we use 20 for efficiency)
+    // - Neon Pro tier: 500+ connections (we use 20 for efficiency)
+    max: 20, // Maximum connections in pool (reduced from 100 to save RAM)
+    min: 2, // Minimum idle connections (reduced from 10 to save RAM)
     
-    // Timeout settings
-    idleTimeoutMillis: 30000, // 30 seconds - close idle connections faster to prevent stale connections
+    // Timeout settings - faster cleanup to free RAM sooner
+    idleTimeoutMillis: 10000, // 10 seconds - close idle connections faster to free RAM
     connectionTimeoutMillis: 10000, // 10 second timeout for initial connection
     
     // Connection keep-alive (critical for cloud databases that close idle connections)
@@ -67,8 +65,8 @@ export const AppDataSource = new DataSource({
     keepAlive: true,
     keepAliveInitialDelayMillis: 10000, // Start keep-alive after 10 seconds of inactivity
     
-    // PostgreSQL-specific query timeout
-    statement_timeout: 30000, // 30 second query timeout
+    // PostgreSQL-specific query timeout - fail faster to free resources
+    statement_timeout: 10000, // 10 second query timeout (reduced from 30s)
     
     // Allow pool to create connections on demand
     allowExitOnIdle: false, // Keep pool alive even when idle

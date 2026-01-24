@@ -74,14 +74,10 @@ export default function CoursesForOtherDeptPage() {
   });
 
   useEffect(() => {
-    const token = localStorage.getItem("auth_token");
-    if (!token) {
-      router.push("/login");
-      return;
-    }
+    // Auth is already handled by admin layout (useAdminAuth)
     loadCourses();
     loadInstructors();
-  }, [router]);
+  }, []);
 
   const loadInstructors = async () => {
     try {

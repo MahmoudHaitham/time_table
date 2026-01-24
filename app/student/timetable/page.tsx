@@ -54,23 +54,23 @@ export default function StudentTimetablePage() {
   };
 
   return (
-    <div className="min-h-screen p-6 sm:p-8 lg:p-12">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen p-3 sm:p-4 md:p-6 lg:p-8 xl:p-12">
+      <div className="w-full max-w-screen-2xl mx-auto">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-12"
+          className="mb-6 sm:mb-8 md:mb-12"
         >
-          <div className="flex items-center gap-6">
-            <div className="p-5 bg-gradient-to-br from-cyan-500/30 to-blue-600/30 rounded-2xl shadow-lg shadow-cyan-500/20">
-              <Calendar className="w-10 h-10 text-cyan-400" />
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 md:gap-6">
+            <div className="p-3 sm:p-4 md:p-5 bg-gradient-to-br from-cyan-500/30 to-blue-600/30 rounded-xl sm:rounded-2xl shadow-lg shadow-cyan-500/20 flex-shrink-0">
+              <Calendar className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 text-cyan-400" />
             </div>
-            <div>
-              <h1 className="text-5xl sm:text-6xl font-bold mb-3">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold mb-2 sm:mb-3 break-words leading-tight">
                 Student <span className="text-gradient">Timetable</span>
               </h1>
-              <p className="text-gray-400 text-lg">Generate your personalized schedule</p>
+              <p className="text-gray-400 text-sm sm:text-base md:text-lg break-words">Generate your personalized schedule</p>
             </div>
           </div>
         </motion.div>
@@ -79,7 +79,7 @@ export default function StudentTimetablePage() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="mb-6 p-4 bg-red-500/20 border border-red-500 rounded-lg text-red-200"
+            className="mb-4 sm:mb-6 p-3 sm:p-4 bg-red-500/20 border border-red-500 rounded-lg text-red-200 text-sm sm:text-base break-words"
           >
             {error}
           </motion.div>
@@ -127,26 +127,26 @@ export default function StudentTimetablePage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="mt-10 glass border border-white/10 rounded-2xl p-10 sm:p-12 shadow-xl"
+          className="mt-6 sm:mt-8 md:mt-10 glass border border-white/10 rounded-xl sm:rounded-2xl p-4 sm:p-6 md:p-8 lg:p-10 xl:p-12 shadow-xl"
         >
-          <div className="flex items-center gap-4 mb-8">
-            <div className="p-4 bg-gradient-to-br from-green-500/30 to-emerald-600/30 rounded-xl shadow-lg shadow-green-500/20">
-              <Calendar className="w-7 h-7 text-green-400" />
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6 md:mb-8">
+            <div className="p-2 sm:p-3 md:p-4 bg-gradient-to-br from-green-500/30 to-emerald-600/30 rounded-lg sm:rounded-xl shadow-lg shadow-green-500/20 flex-shrink-0">
+              <Calendar className="w-5 h-5 sm:w-6 sm:h-7 text-green-400" />
             </div>
-            <div>
-              <h2 className="text-3xl font-bold text-white mb-2">Electives</h2>
-              <p className="text-gray-400">View all available elective course slots across all terms</p>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-1 sm:mb-2 break-words">Electives</h2>
+              <p className="text-gray-400 text-sm sm:text-base break-words">View all available elective course slots across all terms</p>
             </div>
           </div>
-          <p className="text-gray-300 mb-6">
+          <p className="text-gray-300 mb-4 sm:mb-6 text-sm sm:text-base break-words">
             Browse all elective courses and their scheduled slots. Select a system to view electives for that system.
           </p>
           <button
             onClick={handleElectivesSelect}
-            className="px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-bold text-lg shadow-2xl shadow-green-500/50 hover:shadow-green-500/70 hover:scale-105 transition-all flex items-center justify-center gap-3"
+            className="w-full sm:w-auto px-4 sm:px-6 md:px-8 py-3 sm:py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-bold text-sm sm:text-base md:text-lg shadow-2xl shadow-green-500/50 hover:shadow-green-500/70 hover:scale-105 transition-all flex items-center justify-center gap-2 sm:gap-3 min-h-[44px] sm:min-h-[52px]"
           >
-            <Calendar className="w-6 h-6" />
-            View Electives
+            <Calendar className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
+            <span className="break-words">View Electives</span>
           </button>
         </motion.div>
 
@@ -155,26 +155,26 @@ export default function StudentTimetablePage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 }}
-          className="mt-10 glass border border-white/10 rounded-2xl p-10 sm:p-12 shadow-xl"
+          className="mt-6 sm:mt-8 md:mt-10 glass border border-white/10 rounded-xl sm:rounded-2xl p-4 sm:p-6 md:p-8 lg:p-10 xl:p-12 shadow-xl"
         >
-          <div className="flex items-center gap-4 mb-8">
-            <div className="p-4 bg-gradient-to-br from-purple-500/30 to-pink-600/30 rounded-xl shadow-lg shadow-purple-500/20">
-              <Calendar className="w-7 h-7 text-purple-400" />
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6 md:mb-8">
+            <div className="p-2 sm:p-3 md:p-4 bg-gradient-to-br from-purple-500/30 to-pink-600/30 rounded-lg sm:rounded-xl shadow-lg shadow-purple-500/20 flex-shrink-0">
+              <Calendar className="w-5 h-5 sm:w-6 sm:h-7 text-purple-400" />
             </div>
-            <div>
-              <h2 className="text-3xl font-bold text-white mb-2">Other</h2>
-              <p className="text-gray-400">For students who don't belong to a fixed academic term or have special cases</p>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-1 sm:mb-2 break-words">Other</h2>
+              <p className="text-gray-400 text-sm sm:text-base break-words">For students who don't belong to a fixed academic term or have special cases</p>
             </div>
           </div>
-          <p className="text-gray-300 mb-6">
+          <p className="text-gray-300 mb-4 sm:mb-6 text-sm sm:text-base break-words">
             Select courses manually from all available terms. You will need to select a system first. Maximum number of elective courses allowed depends on the classes in each term.
           </p>
           <button
             onClick={handleOtherSelect}
-            className="px-8 py-4 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-xl font-bold text-lg shadow-2xl shadow-purple-500/50 hover:shadow-purple-500/70 hover:scale-105 transition-all flex items-center justify-center gap-3"
+            className="w-full sm:w-auto px-4 sm:px-6 md:px-8 py-3 sm:py-4 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-xl font-bold text-sm sm:text-base md:text-lg shadow-2xl shadow-purple-500/50 hover:shadow-purple-500/70 hover:scale-105 transition-all flex items-center justify-center gap-2 sm:gap-3 min-h-[44px] sm:min-h-[52px]"
           >
-            <Calendar className="w-6 h-6" />
-            Open Other Section
+            <Calendar className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
+            <span className="break-words">Open Other Section</span>
           </button>
         </motion.div>
       </div>

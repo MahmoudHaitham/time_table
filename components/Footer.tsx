@@ -83,7 +83,7 @@ export default function Footer() {
         {/* Bottom Bar */}
         <div className="mt-8 sm:mt-10 md:mt-12 pt-6 sm:pt-8 border-t border-gray-200 dark:border-gray-800">
           <div className="text-center">
-            <p className="text-gray-600 dark:text-gray-400 text-xs sm:text-sm">
+            <p className="text-gray-600 dark:text-gray-400 text-xs sm:text-sm break-words">
               © {new Date().getFullYear()} Mahmoud Haisam Mohammed. All rights reserved.
             </p>
           </div>

@@ -108,13 +108,7 @@ export default function ClassEditorPage() {
   });
 
   useEffect(() => {
-    // Check authentication
-    const token = localStorage.getItem("auth_token");
-    if (!token) {
-      router.push("/login");
-      return;
-    }
-    
+    // Auth is already handled by admin layout (useAdminAuth)
     if (classId) {
       loadClassData();
       loadAllCourses();

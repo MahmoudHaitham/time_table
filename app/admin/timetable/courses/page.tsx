@@ -371,72 +371,72 @@ export default function CoursesPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center p-4">
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="text-center"
         >
-          <div className="w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-white text-xl">Loading courses...</p>
+          <div className="w-12 h-12 sm:w-16 sm:h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-white text-base sm:text-lg md:text-xl break-words">Loading courses...</p>
         </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen p-4 sm:p-6 md:p-8">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen p-3 sm:p-4 md:p-6 lg:p-8">
+      <div className="w-full max-w-screen-2xl mx-auto">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-6 sm:mb-8"
         >
           <button
             onClick={() => router.back()}
-            className="flex items-center gap-2 text-cyan-400 hover:text-cyan-300 mb-4 transition-colors group"
+            className="flex items-center gap-2 text-cyan-400 hover:text-cyan-300 mb-3 sm:mb-4 transition-colors group text-sm sm:text-base"
           >
-            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-            <span>Back</span>
+            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 group-hover:-translate-x-1 transition-transform flex-shrink-0" />
+            <span className="break-words">Back</span>
           </button>
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sm:gap-0">
-            <div className="flex items-center gap-3 sm:gap-4">
-              <div className="p-3 sm:p-4 bg-cyan-500/20 rounded-lg sm:rounded-xl">
-                <BookOpen className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 text-cyan-400" />
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="flex items-start sm:items-center gap-2 sm:gap-3 md:gap-4 min-w-0 flex-1">
+              <div className="p-2 sm:p-3 md:p-4 bg-cyan-500/20 rounded-lg sm:rounded-xl flex-shrink-0">
+                <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 text-cyan-400" />
               </div>
-              <div>
-                <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-2">
+              <div className="min-w-0 flex-1">
+                <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-1 sm:mb-2 break-words leading-tight">
                   All <span className="text-gradient">Courses</span>
                 </h1>
-                <p className="text-gray-400 text-sm sm:text-base">
+                <p className="text-gray-400 text-xs sm:text-sm md:text-base break-words">
                   View course assignments and schedules
                   {cacheStatus === "cached" && (
-                    <span className="ml-2 text-xs text-green-400">(Loaded from cache)</span>
+                    <span className="ml-2 text-xs text-green-400 whitespace-nowrap">(Loaded from cache)</span>
                   )}
                   {cacheStatus === "fresh" && (
-                    <span className="ml-2 text-xs text-blue-400">(Fresh data)</span>
+                    <span className="ml-2 text-xs text-blue-400 whitespace-nowrap">(Fresh data)</span>
                   )}
                 </p>
               </div>
             </div>
-            <div className="flex gap-2 sm:gap-3">
+            <div className="flex gap-2 sm:gap-3 w-full sm:w-auto">
               <button
                 onClick={handleDownload}
                 disabled={loading}
-                className="px-4 sm:px-5 py-2 sm:py-2.5 glass border border-white/10 rounded-lg hover:border-green-500/50 transition-all disabled:opacity-50 flex items-center gap-2 text-sm sm:text-base min-h-[44px]"
+                className="flex-1 sm:flex-none px-3 sm:px-4 md:px-5 py-2 sm:py-2.5 glass border border-white/10 rounded-lg hover:border-green-500/50 transition-all disabled:opacity-50 flex items-center justify-center gap-2 text-xs sm:text-sm md:text-base min-h-[44px]"
                 title="Download all courses as CSV"
               >
-                <Download className="w-4 h-4 sm:w-5 sm:h-5 text-green-400" />
-                <span className="text-green-400 hidden sm:inline">Download</span>
+                <Download className="w-4 h-4 sm:w-5 sm:h-5 text-green-400 flex-shrink-0" />
+                <span className="text-green-400 hidden sm:inline break-words">Download</span>
               </button>
               <button
                 onClick={() => loadCoursesData(true)}
                 disabled={loading}
-                className="px-4 sm:px-5 py-2 sm:py-2.5 glass border border-white/10 rounded-lg hover:border-cyan-500/50 transition-all disabled:opacity-50 flex items-center gap-2 text-sm sm:text-base min-h-[44px]"
+                className="flex-1 sm:flex-none px-3 sm:px-4 md:px-5 py-2 sm:py-2.5 glass border border-white/10 rounded-lg hover:border-cyan-500/50 transition-all disabled:opacity-50 flex items-center justify-center gap-2 text-xs sm:text-sm md:text-base min-h-[44px]"
                 title="Refresh data"
               >
-                <span className="text-cyan-400">Refresh</span>
+                <span className="text-cyan-400 break-words">Refresh</span>
               </button>
             </div>
           </div>
@@ -446,7 +446,7 @@ export default function CoursesPage() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="mb-6 p-4 bg-red-500/20 border border-red-500 rounded-lg text-red-200"
+            className="mb-4 sm:mb-6 p-3 sm:p-4 bg-red-500/20 border border-red-500 rounded-lg text-red-200 text-sm sm:text-base break-words"
           >
             {error}
           </motion.div>
@@ -462,46 +462,48 @@ export default function CoursesPage() {
               transition={{ delay: index * 0.1 }}
               className="glass border border-white/10 rounded-xl p-6 hover:border-cyan-500/50 transition-all"
             >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <h2 className="text-2xl font-bold text-white">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-2">
+                    <h2 className="text-xl sm:text-2xl font-bold text-white break-words">
                       {assignment.course.code}
                     </h2>
                     {assignment.course.is_elective && (
-                      <span className="px-3 py-1 bg-purple-500/20 border border-purple-500/50 rounded-full text-purple-300 text-sm font-semibold">
+                      <span className="px-2 sm:px-3 py-1 bg-purple-500/20 border border-purple-500/50 rounded-full text-purple-300 text-xs sm:text-sm font-semibold whitespace-nowrap">
                         Elective
                       </span>
                     )}
                   </div>
-                  <p className="text-gray-400 text-lg">{assignment.course.name}</p>
+                  <p className="text-gray-400 text-sm sm:text-base md:text-lg break-words">{assignment.course.name}</p>
                   {assignment.course.component_types && (
-                    <p className="text-gray-500 text-sm mt-1">
+                    <p className="text-gray-500 text-xs sm:text-sm mt-1 break-words">
                       Components: {assignment.course.component_types}
                     </p>
                   )}
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0 w-full sm:w-auto">
                   <div className="text-right">
-                    <div className="text-3xl font-bold text-cyan-400">
+                    <div className="text-2xl sm:text-3xl font-bold text-cyan-400">
                       {assignment.classes.length}
                     </div>
-                    <div className="text-gray-400 text-sm">Class(es)</div>
+                    <div className="text-gray-400 text-xs sm:text-sm">Class(es)</div>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleEditClick(assignment.course)}
-                      className="p-2 glass border border-white/10 rounded-lg hover:border-cyan-500/50 transition-all group"
+                      className="p-1.5 sm:p-2 glass border border-white/10 rounded-lg hover:border-cyan-500/50 transition-all group min-w-[36px] min-h-[36px] flex items-center justify-center"
                       title="Edit course"
+                      aria-label="Edit course"
                     >
-                      <Edit className="w-5 h-5 text-cyan-400 group-hover:scale-110 transition-transform" />
+                      <Edit className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400 group-hover:scale-110 transition-transform" />
                     </button>
                     <button
                       onClick={() => handleDeleteClick(assignment.course)}
-                      className="p-2 glass border border-white/10 rounded-lg hover:border-red-500/50 transition-all group"
+                      className="p-1.5 sm:p-2 glass border border-white/10 rounded-lg hover:border-red-500/50 transition-all group min-w-[36px] min-h-[36px] flex items-center justify-center"
                       title="Delete course"
+                      aria-label="Delete course"
                     >
-                      <Trash2 className="w-5 h-5 text-red-400 group-hover:scale-110 transition-transform" />
+                      <Trash2 className="w-4 h-4 sm:w-5 sm:h-5 text-red-400 group-hover:scale-110 transition-transform" />
                     </button>
                   </div>
                 </div>
@@ -535,33 +537,33 @@ export default function CoursesPage() {
                         {classAssignment.components.map((comp) => (
                           <div
                             key={comp.id}
-                            className="p-3 bg-white/5 border border-white/10 rounded-lg"
+                            className="p-2 sm:p-3 bg-white/5 border border-white/10 rounded-lg"
                           >
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-white font-semibold">
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 sm:gap-2 mb-1 sm:mb-2">
+                              <span className="text-white font-semibold text-xs sm:text-sm break-words">
                                 {comp.component_type === "L"
                                   ? "Lecture (L)"
                                   : comp.component_type === "S"
                                   ? "Section (S)"
                                   : "Lab (LB)"}
                               </span>
-                              <span className="text-gray-400 text-xs">
+                              <span className="text-gray-400 text-xs whitespace-nowrap">
                                 {comp.sessions.length} session(s)
                               </span>
                             </div>
                             {comp.sessions.length > 0 && (
-                              <div className="space-y-1 mt-2">
+                              <div className="space-y-1 mt-1 sm:mt-2">
                                 {comp.sessions.map((session) => (
                                   <div
                                     key={session.id}
-                                    className="text-xs text-gray-300 flex items-center gap-2"
+                                    className="text-xs text-gray-300 flex items-start gap-1.5 sm:gap-2 break-words"
                                   >
-                                    <Clock className="w-3 h-3" />
-                                    {session.day} - Slot {session.slot}
+                                    <Clock className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                                    <span className="break-words">{session.day} - Slot {session.slot}</span>
                                     {session.room && (
                                       <>
-                                        <MapPin className="w-3 h-3 ml-2" />
-                                        {session.room}
+                                        <MapPin className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                                        <span className="break-words">{session.room}</span>
                                       </>
                                     )}
                                   </div>
@@ -592,52 +594,54 @@ export default function CoursesPage() {
 
       {/* Edit Course Modal */}
       {showEditModal && editingCourse && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3 sm:p-4">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="glass backdrop-blur-xl border border-white/10 rounded-2xl p-6 w-full max-w-md shadow-2xl"
+            className="glass backdrop-blur-xl border border-white/10 rounded-xl sm:rounded-2xl p-4 sm:p-6 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto"
           >
-            <h2 className="text-2xl font-bold text-white mb-4">Edit Course</h2>
-            <div className="space-y-4">
+            <h2 className="text-xl sm:text-2xl font-bold text-white mb-3 sm:mb-4 break-words">Edit Course</h2>
+            <div className="space-y-3 sm:space-y-4">
               <div>
-                <p className="text-gray-300 mb-2">
+                <p className="text-gray-300 mb-2 text-sm sm:text-base break-words">
                   <span className="font-semibold text-white">Course:</span> {editingCourse.code} - {editingCourse.name}
                 </p>
               </div>
               
-              <div className="flex items-center gap-3 p-4 glass border border-white/10 rounded-lg">
+              <div className="flex items-start gap-2 sm:gap-3 p-3 sm:p-4 glass border border-white/10 rounded-lg">
                 <input
                   type="checkbox"
                   id="editIsElective"
                   checked={editIsElective}
                   onChange={(e) => setEditIsElective(e.target.checked)}
-                  className="w-5 h-5 accent-purple-500"
+                  className="w-4 h-4 sm:w-5 sm:h-5 accent-purple-500 mt-0.5 flex-shrink-0"
                 />
-                <label htmlFor="editIsElective" className="text-white cursor-pointer flex-1">
+                <label htmlFor="editIsElective" className="text-white cursor-pointer flex-1 text-sm sm:text-base break-words">
                   Mark as Elective Course
                 </label>
               </div>
 
-              <div className="flex items-center gap-3 p-4 glass border border-white/10 rounded-lg">
-                <input
-                  type="checkbox"
-                  id="editHasLab"
-                  checked={editHasLab}
-                  onChange={(e) => setEditHasLab(e.target.checked)}
-                  className="w-5 h-5 accent-cyan-500"
-                />
-                <label htmlFor="editHasLab" className="text-white cursor-pointer flex-1">
-                  Include Lab (LB) Component
-                </label>
-                <p className="text-gray-400 text-xs">Note: Lecture (L) and Section (S) are always included</p>
+              <div className="flex flex-col gap-2 sm:gap-3 p-3 sm:p-4 glass border border-white/10 rounded-lg">
+                <div className="flex items-start gap-2 sm:gap-3">
+                  <input
+                    type="checkbox"
+                    id="editHasLab"
+                    checked={editHasLab}
+                    onChange={(e) => setEditHasLab(e.target.checked)}
+                    className="w-4 h-4 sm:w-5 sm:h-5 accent-cyan-500 mt-0.5 flex-shrink-0"
+                  />
+                  <label htmlFor="editHasLab" className="text-white cursor-pointer flex-1 text-sm sm:text-base break-words">
+                    Include Lab (LB) Component
+                  </label>
+                </div>
+                <p className="text-gray-400 text-xs sm:text-sm break-words ml-6 sm:ml-8">Note: Lecture (L) and Section (S) are always included</p>
               </div>
             </div>
 
-            <div className="flex gap-4 mt-6">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mt-4 sm:mt-6">
               <button
                 onClick={handleEditSave}
-                className="flex-1 px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-semibold shadow-lg shadow-cyan-500/50 hover:shadow-xl transition-all"
+                className="flex-1 px-4 py-2.5 sm:py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-semibold shadow-lg shadow-cyan-500/50 hover:shadow-xl transition-all text-sm sm:text-base min-h-[44px]"
               >
                 Save Changes
               </button>
@@ -646,7 +650,7 @@ export default function CoursesPage() {
                   setShowEditModal(false);
                   setEditingCourse(null);
                 }}
-                className="flex-1 px-4 py-2 glass border border-white/10 rounded-lg font-semibold text-white hover:border-gray-500/50 transition-all"
+                className="flex-1 px-4 py-2.5 sm:py-3 glass border border-white/10 rounded-lg font-semibold text-white hover:border-gray-500/50 transition-all text-sm sm:text-base min-h-[44px]"
               >
                 Cancel
               </button>

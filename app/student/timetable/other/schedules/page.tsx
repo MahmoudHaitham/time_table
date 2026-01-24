@@ -659,39 +659,40 @@ export default function OtherSectionSchedulesPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen p-6 sm:p-8 lg:p-12 flex items-center justify-center">
+      <div className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-12 h-12 border-3 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-400 text-lg">Loading schedules...</p>
+          <div className="w-10 h-10 sm:w-12 sm:h-12 border-3 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-400 text-sm sm:text-base md:text-lg break-words">Loading schedules...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen p-6 sm:p-8 lg:p-12">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen p-3 sm:p-4 md:p-6 lg:p-8 xl:p-12">
+      <div className="w-full max-w-screen-2xl mx-auto">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-12"
+          className="mb-6 sm:mb-8 md:mb-12"
         >
-          <div className="flex items-center gap-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 md:gap-6">
             <button
               onClick={() => router.push("/student/timetable/other")}
-              className="p-3 glass border border-white/10 rounded-xl hover:border-purple-500/50 hover:bg-white/5 transition-all"
+              className="p-2 sm:p-3 glass border border-white/10 rounded-xl hover:border-purple-500/50 hover:bg-white/5 transition-all flex-shrink-0"
+              aria-label="Go back"
             >
-              <ArrowLeft className="w-6 h-6 text-white" />
+              <ArrowLeft className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
             </button>
-            <div className="p-5 bg-gradient-to-br from-purple-500/30 to-pink-600/30 rounded-2xl shadow-lg shadow-purple-500/20">
-              <Calendar className="w-10 h-10 text-purple-400" />
+            <div className="p-3 sm:p-4 md:p-5 bg-gradient-to-br from-purple-500/30 to-pink-600/30 rounded-xl sm:rounded-2xl shadow-lg shadow-purple-500/20 flex-shrink-0">
+              <Calendar className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 text-purple-400" />
             </div>
-            <div>
-              <h1 className="text-5xl sm:text-6xl font-bold mb-3">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold mb-2 sm:mb-3 break-words leading-tight">
                 Generated <span className="text-gradient">Schedules</span>
               </h1>
-              <p className="text-gray-400 text-lg">
+              <p className="text-gray-400 text-sm sm:text-base md:text-lg break-words">
                 {schedules.length} schedule{schedules.length !== 1 ? "s" : ""} found
               </p>
             </div>
@@ -725,22 +726,24 @@ export default function OtherSectionSchedulesPage() {
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-6"
+            className="mb-4 sm:mb-6"
           >
             <button
               onClick={handleDownloadAllPDFs}
               disabled={downloadingPDF === "all" || loading}
-              className="w-full px-6 py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-bold text-lg shadow-2xl shadow-green-500/50 hover:shadow-green-500/70 hover:scale-[1.02] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-3"
+              className="w-full px-4 sm:px-6 py-3 sm:py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-bold text-sm sm:text-base md:text-lg shadow-2xl shadow-green-500/50 hover:shadow-green-500/70 hover:scale-[1.02] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2 sm:gap-3 min-h-[44px] sm:min-h-[52px]"
             >
               {downloadingPDF === "all" ? (
                 <>
-                  <div className="w-6 h-6 border-3 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Generating PDFs...
+                  <div className="w-5 h-5 sm:w-6 sm:h-6 border-3 border-white border-t-transparent rounded-full animate-spin flex-shrink-0"></div>
+                  <span className="break-words">Generating PDFs...</span>
                 </>
               ) : (
                 <>
-                  <Download className="w-6 h-6" />
-                  Download All Schedules as Single PDF ({schedules.length} schedule{schedules.length !== 1 ? 's' : ''})
+                  <Download className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
+                  <span className="break-words text-center">
+                    Download All Schedules as Single PDF ({schedules.length} schedule{schedules.length !== 1 ? 's' : ''})
+                  </span>
                 </>
               )}
             </button>
@@ -892,28 +895,28 @@ export default function OtherSectionSchedulesPage() {
               </div>
 
               {/* Courses List */}
-              <div className="mt-6 pt-6 border-t border-white/10">
-                <h3 className="text-xl font-bold text-white mb-4">Courses in this schedule</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-white/10">
+                <h3 className="text-base sm:text-lg md:text-xl font-bold text-white mb-3 sm:mb-4 break-words">Courses in this schedule</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-4">
                   {schedule.courses.map((courseData, idx) => (
                     <div
                       key={idx}
-                      className="p-4 glass border border-white/10 rounded-xl"
+                      className="p-3 sm:p-4 glass border border-white/10 rounded-lg sm:rounded-xl"
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1">
-                          <div className="font-bold text-white mb-1">
-                            {courseData.course.code}
+                      <div className="flex items-start justify-between gap-2 min-w-0">
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-white mb-1 flex flex-wrap items-center gap-1 sm:gap-2">
+                            <span className="break-words">{courseData.course.code}</span>
                             {courseData.course.is_elective && (
-                              <span className="ml-2 text-xs bg-purple-500/30 text-purple-300 px-2 py-0.5 rounded">
+                              <span className="text-xs bg-purple-500/30 text-purple-300 px-1.5 sm:px-2 py-0.5 rounded whitespace-nowrap">
                                 Elective
                               </span>
                             )}
                           </div>
-                          <div className="text-sm text-gray-300 mb-2">
+                          <div className="text-xs sm:text-sm text-gray-300 mb-1 sm:mb-2 break-words">
                             {courseData.course.name}
                           </div>
-                          <div className="text-xs text-gray-400">
+                          <div className="text-xs text-gray-400 break-words">
                             Class: {courseData.class.class_code}
                           </div>
                           <div className="text-xs text-gray-500 mt-1">
@@ -934,22 +937,22 @@ export default function OtherSectionSchedulesPage() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex items-center justify-center gap-4 mt-10"
+            className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 mt-6 sm:mt-8 md:mt-10"
           >
             <button
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="px-6 py-3 glass border border-white/10 rounded-xl font-semibold text-white hover:border-purple-500/50 hover:bg-white/5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 glass border border-white/10 rounded-xl font-semibold text-white hover:border-purple-500/50 hover:bg-white/5 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base min-h-[44px]"
             >
               Previous
             </button>
-            <span className="text-gray-400">
+            <span className="text-gray-400 text-sm sm:text-base whitespace-nowrap">
               Page {currentPage} of {totalPages}
             </span>
             <button
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
-              className="px-6 py-3 glass border border-white/10 rounded-xl font-semibold text-white hover:border-purple-500/50 hover:bg-white/5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 glass border border-white/10 rounded-xl font-semibold text-white hover:border-purple-500/50 hover:bg-white/5 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base min-h-[44px]"
             >
               Next
             </button>
