@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { sessionsAPI } from "@/lib/api/timetable";
@@ -60,20 +60,95 @@ export default function InstructorSchedulePage() {
   const [error, setError] = useState<string | null>(null);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
   const [downloadingAllPDF, setDownloadingAllPDF] = useState(false);
+  
+  // Refs to handle debouncing and prevent race conditions
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const currentSearchRef = useRef<string>("");
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
     // Auth is already handled by admin layout (useAdminAuth)
     // Just load instructors data
     loadInstructors();
+    
+    return () => {
+      isMountedRef.current = false;
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
   }, []);
 
-  useEffect(() => {
-    if (selectedInstructor) {
-      loadInstructorSessions();
-    } else {
+  // Function to check if instructor name matches exactly
+  const isExactMatch = (instructorName: string): boolean => {
+    return instructors.some(
+      instructor => instructor.toLowerCase().trim() === instructorName.toLowerCase().trim()
+    );
+  };
+
+  // Function to load sessions immediately (used when user selects from datalist or presses Enter)
+  const loadSessionsImmediately = (instructorName: string) => {
+    if (!instructorName.trim()) {
       setSessions([]);
+      currentSearchRef.current = "";
+      return;
     }
-  }, [selectedInstructor]);
+
+    if (!isExactMatch(instructorName)) {
+      return;
+    }
+
+    // Clear any pending debounce
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    currentSearchRef.current = instructorName;
+    loadInstructorSessions();
+  };
+
+  useEffect(() => {
+    // Clear any existing timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    // If no instructor selected, clear sessions immediately
+    if (!selectedInstructor.trim()) {
+      setSessions([]);
+      currentSearchRef.current = "";
+      return;
+    }
+
+    // Check if the selected instructor exactly matches one from the list
+    if (!isExactMatch(selectedInstructor)) {
+      // Don't clear sessions immediately - wait for debounce to see if user is still typing
+      // This prevents flickering while user is typing
+      debounceTimerRef.current = setTimeout(() => {
+        if (isMountedRef.current && currentSearchRef.current === selectedInstructor) {
+          // Only clear if still no match after debounce
+          if (!isExactMatch(selectedInstructor)) {
+            setSessions([]);
+          }
+        }
+      }, 300);
+      return;
+    }
+
+    // Debounce the API call - wait 300ms after user stops typing
+    debounceTimerRef.current = setTimeout(() => {
+      if (isMountedRef.current) {
+        currentSearchRef.current = selectedInstructor;
+        loadInstructorSessions();
+      }
+    }, 300);
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [selectedInstructor, instructors]);
 
   const loadInstructors = async () => {
     try {
@@ -88,18 +163,38 @@ export default function InstructorSchedulePage() {
   };
 
   const loadInstructorSessions = async () => {
-    if (!selectedInstructor) return;
+    const instructorToLoad = currentSearchRef.current || selectedInstructor;
+    if (!instructorToLoad || !instructorToLoad.trim()) return;
+    
+    // Verify the instructor still matches exactly (prevent race conditions)
+    const exactMatch = instructors.some(
+      instructor => instructor.toLowerCase().trim() === instructorToLoad.toLowerCase().trim()
+    );
+    
+    if (!exactMatch) {
+      // Don't load if it doesn't match exactly
+      return;
+    }
     
     try {
       setLoading(true);
       setError(null);
-      const response = await sessionsAPI.getByInstructor(selectedInstructor);
-      setSessions(response.data || []);
+      const response = await sessionsAPI.getByInstructor(instructorToLoad);
+      
+      // Double-check that this is still the current search before updating state
+      if (isMountedRef.current && currentSearchRef.current === instructorToLoad) {
+        setSessions(response.data || []);
+      }
     } catch (err: any) {
-      setError(err.message || "Failed to load instructor sessions");
-      setSessions([]);
+      // Only update error if this is still the current search
+      if (isMountedRef.current && currentSearchRef.current === instructorToLoad) {
+        setError(err.message || "Failed to load instructor sessions");
+        setSessions([]);
+      }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
   };
 
@@ -520,6 +615,7 @@ export default function InstructorSchedulePage() {
       const totalPages = doc.getNumberOfPages();
       for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);
+        // Page number on the right
         doc.setFontSize(8);
         doc.setTextColor(100, 100, 120);
         doc.text(
@@ -527,6 +623,25 @@ export default function InstructorSchedulePage() {
           pageWidth - margin,
           pageHeight - 5,
           { align: "right" }
+        );
+        // Designer credit at bottom left - gradient color with neon effect
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        // Add subtle glow effect by drawing text with slight offset in lighter color
+        doc.setTextColor(100, 200, 255); // Lighter cyan for glow
+        doc.text(
+          "DESIGNED BY MAHMOUD HAISAM",
+          margin + 0.2,
+          pageHeight - 5 + 0.2,
+          { align: "left" }
+        );
+        // Main text with gradient-like color (cyan-400: rgb(34, 211, 238))
+        doc.setTextColor(34, 211, 238); // cyan-400 - matches system number gradient
+        doc.text(
+          "DESIGNED BY MAHMOUD HAISAM",
+          margin,
+          pageHeight - 5,
+          { align: "left" }
         );
       }
 
@@ -671,6 +786,7 @@ export default function InstructorSchedulePage() {
       const totalPages = doc.getNumberOfPages();
       for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);
+        // Page number on the right
         doc.setFontSize(8);
         doc.setTextColor(100, 100, 120);
         doc.text(
@@ -678,6 +794,25 @@ export default function InstructorSchedulePage() {
           pageWidth - margin,
           pageHeight - 5,
           { align: "right" }
+        );
+        // Designer credit at bottom left - gradient color with neon effect
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        // Add subtle glow effect by drawing text with slight offset in lighter color
+        doc.setTextColor(100, 200, 255); // Lighter cyan for glow
+        doc.text(
+          "DESIGNED BY MAHMOUD HAISAM",
+          margin + 0.2,
+          pageHeight - 5 + 0.2,
+          { align: "left" }
+        );
+        // Main text with gradient-like color (cyan-400: rgb(34, 211, 238))
+        doc.setTextColor(34, 211, 238); // cyan-400 - matches system number gradient
+        doc.text(
+          "DESIGNED BY MAHMOUD HAISAM",
+          margin,
+          pageHeight - 5,
+          { align: "left" }
         );
       }
 
@@ -779,6 +914,23 @@ export default function InstructorSchedulePage() {
                   list="instructors-list"
                   value={selectedInstructor}
                   onChange={(e) => setSelectedInstructor(e.target.value)}
+                  onBlur={(e) => {
+                    // When user clicks away or selects from datalist, load immediately if exact match
+                    const value = e.target.value.trim();
+                    if (value && isExactMatch(value)) {
+                      loadSessionsImmediately(value);
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    // When user presses Enter, load immediately if exact match
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const value = selectedInstructor.trim();
+                      if (value && isExactMatch(value)) {
+                        loadSessionsImmediately(value);
+                      }
+                    }
+                  }}
                   placeholder="Type or select instructor name..."
                   className="w-full px-4 py-3 glass border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all"
                 />
