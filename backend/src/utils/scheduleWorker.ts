@@ -122,14 +122,13 @@ function buildScheduleWorker(combination: any[], excludedDays: string[]): any | 
     const hasS = componentMap.has("S") && componentMap.get("S")!.length > 0;
     const hasLB = componentMap.has("LB") && componentMap.get("LB")!.length > 0;
     
-    const requiresL = componentTypes.includes("L");
-    const requiresS = componentTypes.includes("S");
-    const requiresLB = componentTypes.includes("LB");
+    // Course is valid if it has AT LEAST ONE component with sessions
+    // This allows schedules even if some components (L, S, LB) don't have sessions yet
+    const hasAtLeastOneComponent = hasL || hasS || hasLB;
     
-    if (requiresL && !hasL) return null;
-    if (requiresS && !requiresLB && !hasS) return null;
-    if (requiresLB && !requiresS && !hasLB) return null;
-    if (requiresS && requiresLB && !hasS && !hasLB) return null;
+    if (!hasAtLeastOneComponent) {
+      return null; // No components with sessions at all
+    }
     
     componentMap.forEach((sessions) => {
       courseSessions.push(...sessions);
@@ -197,7 +196,7 @@ function buildScheduleWorker(combination: any[], excludedDays: string[]): any | 
         const componentTypesOnDay = daysComponentTypes.get(excludedDay) || new Set();
         
         if (componentTypesOnDay.has("L")) {
-          excludedDaysLecturePenalty += 50000000;
+          excludedDaysLecturePenalty += 100000000; // 100 MILLION penalty per excluded day with lecture
         }
         
         if (slotsCount === 1) {

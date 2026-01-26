@@ -1824,7 +1824,7 @@ export const generateOtherSectionSchedules = async (req: Request, res: Response)
     schedules.sort((a, b) => b.score - a.score);
 
     // Return top 50 schedules
-    const topSchedules = schedules.slice(0, 50);
+    const topSchedules = schedules.slice(0, 100);
 
     if (topSchedules.length === 0) {
       return res.json({
@@ -1981,48 +1981,30 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
       });
     }
 
-    // NEW APPROACH: Use unified preferences_hash for instant lookup
-    // Generate hash from ALL preferences (same methodology as admin templates)
-    console.log(`[generateTimetableSchedules] 🔍 Generating preferences hash and checking template...`);
+    // NEW APPROACH (Option B): Use BASE hash for template lookup
+    // Hash only includes: term_id, system_type, electives
+    // Excluded days, excluded core, and instructors are RUNTIME FILTERS
+    console.log(`[generateTimetableSchedules] 🔍 Generating base template hash...`);
     const templateCheckStart = Date.now();
     
-    // Import unified hash utility
-    const { generatePreferencesHash } = await import("../utils/preferencesHash");
+    // Import hash and filter utilities
+    const { generateBaseTemplateHash, applyFiltersAndRescore } = await import("../utils/preferencesHash");
     
-    // Generate unified preferences hash (same methodology as admin)
-    const preferencesHash = generatePreferencesHash({
+    // Generate BASE hash (term, system, electives, excludedCore - NOT excluded days/instructors)
+    // NOTE: excludedCoreCourseIds is in hash because it changes which courses are generated
+    //       excludedDays and preferredInstructors are NOT in hash (scoring only)
+    const baseTemplateHash = generateBaseTemplateHash({
       termId: parsedTermId,
       systemType: scheduleSystemType,
       electiveCourseIds: sortedElectiveIds,
-      excludedDays: sortedExcludedDays.length > 0 ? sortedExcludedDays : null,
       excludedCoreCourseIds: sortedExcludedCoreIds,
-      preferredInstructors: preferredInstructorNames.length > 0 ? preferredInstructorNames : null,
     });
     
-    console.log(`[generateTimetableSchedules] Preferences hash: ${preferencesHash}`);
-    console.log(`  Preferences: term=${parsedTermId}, system=${scheduleSystemType}, electives=${sortedElectiveIds?.join(",") || "none"}, excludedDays=${sortedExcludedDays.join(",") || "none"}, excludedCore=${sortedExcludedCoreIds?.join(",") || "none"}, instructors=${preferredInstructorNames.join(",") || "none"}`);
+    console.log(`[generateTimetableSchedules] Base template hash: ${baseTemplateHash}`);
+    console.log(`  Hash includes: term=${parsedTermId}, system=${scheduleSystemType}, electives=${sortedElectiveIds?.join(",") || "none"}, excludedCore=${sortedExcludedCoreIds?.join(",") || "none"}`);
+    console.log(`  Runtime filters: excludedDays=${sortedExcludedDays.join(",") || "none"}, instructors=${preferredInstructorNames.join(",") || "none"}`);
 
-    // DEBUG: Check what templates exist for this term/system
-    try {
-      const debugTemplates = await AppDataSource.query(
-        `SELECT id, preferences_hash, schedule_count, is_generating FROM schedule_templates WHERE term_id = $1 AND system_type = $2 LIMIT 5`,
-        [parsedTermId, scheduleSystemType]
-      );
-      console.log(`[generateTimetableSchedules] DEBUG: Existing templates for term=${parsedTermId}, system=${scheduleSystemType}:`);
-      if (debugTemplates && debugTemplates.length > 0) {
-        debugTemplates.forEach((t: any) => {
-          console.log(`  - ID: ${t.id}, hash: ${t.preferences_hash}, schedules: ${t.schedule_count}, generating: ${t.is_generating}`);
-        });
-      } else {
-        console.log(`  - No templates found`);
-      }
-    } catch (e) {
-      console.log(`[generateTimetableSchedules] DEBUG: Could not fetch existing templates`);
-    }
-
-    // CRITICAL: Check template existence IMMEDIATELY after hash generation
-    // This MUST happen BEFORE any expensive database queries or generation work
-    // Check by BOTH new preferences_hash AND old composite key for backward compatibility
+    // Check for existing BASE template (not filtered by preferences)
     const scheduleTemplateRepo = AppDataSource.getRepository(ScheduleTemplate);
     let existingTemplate: ScheduleTemplate | null = null;
     
@@ -2033,112 +2015,113 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
       : null;
     
     try {
-      // First: Check by NEW preferences_hash
-      const findByHashPromise = scheduleTemplateRepo.findOne({
-        where: { preferences_hash: preferencesHash },
-        select: ["id", "schedule_count", "preferences_hash", "base_schedules"],
-      });
-      
-      const timeoutPromise = new Promise<null>((_, reject) => 
-        setTimeout(() => reject(new Error("Template existence check timeout")), 5000)
+      // Single optimized query: check by base hash OR old composite key
+      const findPromise = AppDataSource.query(
+        `SELECT id, schedule_count, preferences_hash, base_schedules 
+         FROM schedule_templates 
+         WHERE preferences_hash = $1 
+            OR (term_id = $2 AND system_type = $3 AND elective_combination_hash = $4)
+         LIMIT 1`,
+        [baseTemplateHash, parsedTermId, scheduleSystemType, electiveCombinationHashForCheck]
       );
       
-      existingTemplate = await Promise.race([findByHashPromise, timeoutPromise]) as ScheduleTemplate | null;
+      const timeoutPromise = new Promise<null>((_, reject) => 
+        setTimeout(() => reject(new Error("Template check timeout")), 5000)
+      );
       
-      // If not found by new hash, check by OLD composite key (backward compatibility)
-      if (!existingTemplate) {
-        console.log(`[generateTimetableSchedules] Not found by preferences_hash, checking OLD method...`);
+      const result = await Promise.race([findPromise, timeoutPromise]) as any[];
+      
+      if (result && result.length > 0) {
+        existingTemplate = result[0] as ScheduleTemplate;
         
-        const findByOldKeyPromise = scheduleTemplateRepo.findOne({
-          where: { 
-            term_id: parsedTermId,
-            system_type: scheduleSystemType,
-            elective_combination_hash: electiveCombinationHashForCheck,
-          },
-          select: ["id", "schedule_count", "preferences_hash", "base_schedules"],
-        });
-        
-        existingTemplate = await Promise.race([findByOldKeyPromise, timeoutPromise]) as ScheduleTemplate | null;
-        
-        if (existingTemplate) {
-          console.log(`[generateTimetableSchedules] ✅ Found by OLD method (ID: ${existingTemplate.id}), updating with new preferences_hash...`);
-          
-          // Update the old template with the new preferences_hash for future lookups
+        // If found by old method, update with new base hash
+        if (existingTemplate.preferences_hash !== baseTemplateHash) {
+          console.log(`[generateTimetableSchedules] ✅ Found by OLD method (ID: ${existingTemplate.id}), updating hash...`);
           setImmediate(async () => {
             try {
               await AppDataSource.query(
-                `UPDATE schedule_templates SET preferences_hash = $1 WHERE id = $2 AND preferences_hash IS NULL`,
-                [preferencesHash, existingTemplate!.id]
+                `UPDATE schedule_templates SET preferences_hash = $1 WHERE id = $2`,
+                [baseTemplateHash, existingTemplate!.id]
               );
-              console.log(`[generateTimetableSchedules] Updated template ${existingTemplate!.id} with preferences_hash ${preferencesHash}`);
-            } catch (e) { /* ignore - might conflict if another request updated */ }
+            } catch (e) { /* ignore */ }
           });
         }
       }
     } catch (error: any) {
       if (error.message?.includes("timeout")) {
-        console.warn(`[generateTimetableSchedules] Template existence check timed out after 5s, continuing without template`);
-      } else {
-        console.error(`[generateTimetableSchedules] Error checking template existence:`, error.message);
+        console.warn(`[generateTimetableSchedules] Template check timed out, continuing...`);
       }
-      // Continue without template if check fails
       existingTemplate = null;
     }
 
     const templateCheckTime = Date.now() - templateCheckStart;
-    console.log(`[generateTimetableSchedules] Template existence check: ${templateCheckTime}ms`);
+    console.log(`[generateTimetableSchedules] Template check: ${templateCheckTime}ms`);
 
-    // If template exists, load schedules and return IMMEDIATELY (skip ALL expensive work)
+    // If base template exists, APPLY FILTERS and return (no generation needed!)
     if (existingTemplate) {
-      console.log(`[generateTimetableSchedules] ✅ Template exists for hash ${preferencesHash}, skipping generation`);
-      console.log(`[generateTimetableSchedules] Found existing template (ID: ${existingTemplate.id}) with ${existingTemplate.schedule_count} schedules`);
+      const baseSchedules = existingTemplate.base_schedules || [];
       
-      // Use schedules directly from existingTemplate (already loaded in findOne with select)
-      const schedules = existingTemplate.base_schedules || [];
-      
-      if (!schedules || schedules.length === 0 || !Array.isArray(schedules)) {
-        console.log(`[generateTimetableSchedules] ⚠️  Template found but schedules are empty, will generate new...`);
-        // Continue to generation below
-      } else {
-        // Template found with schedules - return IMMEDIATELY (skip ALL expensive work)
-        console.log(`[generateTimetableSchedules] ✅ Returning ${schedules.length} pre-filtered schedules (NO generation needed!)`);
+      if (baseSchedules && baseSchedules.length > 0 && Array.isArray(baseSchedules)) {
+        console.log(`[generateTimetableSchedules] ✅ Base template found (ID: ${existingTemplate.id}) with ${baseSchedules.length} schedules`);
+        console.log(`[generateTimetableSchedules] 🔄 Applying filters at runtime...`);
         
-        // Update access count asynchronously (don't block response)
+        const filterStart = Date.now();
+        
+        // APPLY FILTERS AND RE-SCORE (this is the key optimization!)
+        const filteredSchedules = applyFiltersAndRescore(
+          baseSchedules,
+          sortedExcludedDays.length > 0 ? sortedExcludedDays : null,
+          sortedExcludedCoreIds,
+          preferredInstructorNames.length > 0 ? preferredInstructorNames : null,
+          50 // limit
+        );
+        
+        const filterTime = Date.now() - filterStart;
+        console.log(`[generateTimetableSchedules] ✅ Filtering complete in ${filterTime}ms - ${filteredSchedules.length} schedules returned`);
+        
+        // Update access count asynchronously
         setImmediate(async () => {
           try {
-            await scheduleTemplateRepo.update(
-              { preferences_hash: preferencesHash },
-              { 
-                access_count: () => "access_count + 1",
-                last_accessed_at: new Date(),
-              }
+            await AppDataSource.query(
+              `UPDATE schedule_templates SET access_count = access_count + 1, last_accessed_at = NOW() WHERE id = $1`,
+              [existingTemplate!.id]
             );
-          } catch (err: any) {
-            // Ignore errors - non-critical
-          }
+          } catch (e) { /* ignore */ }
         });
 
-        // Take top 50 (already sorted by score)
-        const topSchedules = schedules.slice(0, 50);
+        // Handle case where all schedules filtered out (only by excluded days scoring now)
+        if (filteredSchedules.length === 0) {
+          return res.json({
+            success: true,
+            data: [],
+            message: "No schedules match your preferences. All schedules have sessions on your excluded days.",
+            fromTemplate: true,
+            templateId: existingTemplate.id,
+          });
+        }
         
-        // Cache the result in memory
-        cache.set(cacheKey, topSchedules);
+        // Cache filtered result and return
+        cache.set(cacheKey, filteredSchedules);
         
         return res.json({
           success: true,
-          data: topSchedules,
+          data: filteredSchedules,
           cached: false,
           fromTemplate: true,
+          filtered: true,
           templateId: existingTemplate.id,
-          preferences_hash: preferencesHash,
+          baseTemplateHash: baseTemplateHash,
+          filterTime: filterTime,
         });
+      } else {
+        console.log(`[generateTimetableSchedules] ⚠️  Template found but empty, will generate...`);
       }
     }
 
-    // No template found in first check - use RESERVATION pattern to prevent race conditions
+    // No base template found - use RESERVATION pattern to prevent race conditions
     // Try to INSERT a placeholder first. If we succeed, we "own" this hash and can generate.
     // If we fail (conflict), another request already owns it - wait and fetch their result.
-    console.log(`[generateTimetableSchedules] ⚠️  No template in first check, attempting to RESERVE hash ${preferencesHash}...`);
+    console.log(`[generateTimetableSchedules] ⚠️  No base template found, attempting to RESERVE hash ${baseTemplateHash}...`);
     
     // Prepare placeholder data for reservation
     const sortedElectiveIdsForReserve = electiveCourseIds ? [...electiveCourseIds].sort((a, b) => a - b) : null;
@@ -2151,36 +2134,32 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
     let templateAlreadyExists = false;
     
     try {
-      // Try to INSERT a placeholder template with empty schedules
+      // Try to INSERT a placeholder BASE template (no excluded days/instructors stored)
       // ON CONFLICT DO NOTHING - if another request already reserved, this returns empty
       const reserveResult = await AppDataSource.query(
         `INSERT INTO schedule_templates (
           preferences_hash, term_id, system_type, elective_course_ids, 
-          elective_combination_hash, excluded_days, excluded_core_course_ids, 
-          preferred_instructors, base_schedules, schedule_count, access_count, last_accessed_at, is_generating
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, '[]'::jsonb, 0, 0, NOW(), true)
+          elective_combination_hash, base_schedules, schedule_count, access_count, last_accessed_at, is_generating
+        ) VALUES ($1, $2, $3, $4, $5, '[]'::jsonb, 0, 0, NOW(), true)
         ON CONFLICT (preferences_hash) DO NOTHING
         RETURNING id`,
         [
-          preferencesHash,
+          baseTemplateHash,
           parsedTermId,
           scheduleSystemType,
           electiveIdsJsonReserve,
           electiveHashReserve,
-          sortedExcludedDays.length > 0 ? JSON.stringify(sortedExcludedDays) : null,
-          sortedExcludedCoreIds && sortedExcludedCoreIds.length > 0 ? JSON.stringify(sortedExcludedCoreIds) : null,
-          preferredInstructorNames.length > 0 ? JSON.stringify(preferredInstructorNames) : null,
         ]
       );
       
       if (reserveResult && reserveResult.length > 0) {
         // We successfully reserved this hash - we own it!
         reservedTemplateId = reserveResult[0].id;
-        console.log(`[generateTimetableSchedules] ✅ RESERVED hash ${preferencesHash} (template ID: ${reservedTemplateId}) - we will generate`);
+        console.log(`[generateTimetableSchedules] ✅ RESERVED base hash ${baseTemplateHash} (template ID: ${reservedTemplateId}) - we will generate`);
       } else {
         // Conflict - another request already reserved/saved this hash
         templateAlreadyExists = true;
-        console.log(`[generateTimetableSchedules] ⚠️  Hash ${preferencesHash} already reserved by another request - fetching their result...`);
+        console.log(`[generateTimetableSchedules] ⚠️  Base hash ${baseTemplateHash} already reserved - waiting for other request...`);
       }
     } catch (reserveError: any) {
       // If reserve fails, check if template exists
@@ -2188,62 +2167,72 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
       templateAlreadyExists = true;
     }
     
-    // If template already exists (reserved by another request), wait for it and return
+    // If template already exists (reserved by another request), wait for it and return with filters
     if (templateAlreadyExists) {
       // Wait a bit for the other request to finish generating (poll with backoff)
-      for (let attempt = 0; attempt < 30; attempt++) { // Max 30 seconds wait
+      // Reduced to 10 attempts (10 seconds) for efficiency
+      for (let attempt = 0; attempt < 10; attempt++) {
         await new Promise(r => setTimeout(r, 1000)); // Wait 1 second between checks
         
         try {
           const existingResult = await AppDataSource.query(
             `SELECT id, schedule_count, base_schedules, is_generating FROM schedule_templates WHERE preferences_hash = $1 LIMIT 1`,
-            [preferencesHash]
+            [baseTemplateHash]
           );
           
           if (existingResult && existingResult.length > 0) {
             const row = existingResult[0];
-            const schedules = row.base_schedules || [];
+            const baseSchedules = row.base_schedules || [];
             
             // Check if generation is complete (has schedules or is_generating is false)
-            if (schedules.length > 0 || row.is_generating === false) {
-              console.log(`[generateTimetableSchedules] ✅ Other request completed - returning ${schedules.length} schedules`);
+            if (baseSchedules.length > 0 || row.is_generating === false) {
+              console.log(`[generateTimetableSchedules] ✅ Other request completed - applying filters to ${baseSchedules.length} schedules`);
+              
+              // APPLY FILTERS to the base schedules
+              const filteredSchedules = applyFiltersAndRescore(
+                baseSchedules,
+                sortedExcludedDays.length > 0 ? sortedExcludedDays : null,
+                sortedExcludedCoreIds,
+                preferredInstructorNames.length > 0 ? preferredInstructorNames : null,
+                50
+              );
               
               // Update access count
               setImmediate(async () => {
                 try {
                   await AppDataSource.query(
                     `UPDATE schedule_templates SET access_count = access_count + 1, last_accessed_at = NOW() WHERE preferences_hash = $1`,
-                    [preferencesHash]
+                    [baseTemplateHash]
                   );
                 } catch (e) { /* ignore */ }
               });
               
-              const topSchedules = schedules.slice(0, 50);
-              cache.set(cacheKey, topSchedules);
+              cache.set(cacheKey, filteredSchedules);
               
               return res.json({
                 success: true,
-                data: topSchedules,
+                data: filteredSchedules,
                 cached: false,
                 fromTemplate: true,
+                filtered: true,
                 templateId: row.id,
-                preferences_hash: preferencesHash,
+                baseTemplateHash: baseTemplateHash,
               });
             }
             
-            console.log(`[generateTimetableSchedules] Waiting for other request to complete generation... (attempt ${attempt + 1}/30)`);
+            console.log(`[generateTimetableSchedules] Waiting for other request... (attempt ${attempt + 1}/10)`);
           }
         } catch (pollError) {
           // Ignore poll errors, keep waiting
         }
       }
       
-      // If we waited 30 seconds and still no result, something went wrong - generate anyway
-      console.warn(`[generateTimetableSchedules] Timeout waiting for other request - will try to generate ourselves`);
+      // If we waited 10 seconds and still no result, something went wrong - generate anyway
+      console.warn(`[generateTimetableSchedules] Timeout waiting for other request - will generate ourselves`);
     }
 
-    // We own this hash (reserved successfully) - proceed with generation
-    console.log(`[generateTimetableSchedules] 🔨 Starting schedule generation for hash ${preferencesHash}`);
+    // We own this hash (reserved successfully) - proceed with BASE generation (no filters applied)
+    console.log(`[generateTimetableSchedules] 🔨 Starting BASE schedule generation for hash ${baseTemplateHash}`);
     console.log(`  Preferences: term=${parsedTermId}, system=${scheduleSystemType}, excluded=${excludedDaysKey}, electives=${electiveIdsKey}, excluded_core=${excludedCoreIdsKey}, instructors=${preferredInstructorNames.length}`);
 
     // Skip database cache lookup to prevent timeout issues
@@ -2511,35 +2500,49 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
     console.log(`  - Classes with courses that have sessions: ${classesInUse.size} (${Array.from(classesInUse).sort().join(", ")})`);
     console.log(`  - Classes missing sessions: ${Array.from(classesWithCourses).filter(c => !classesInUse.has(c)).sort().join(", ") || "None"}`);
 
-    // Generate all possible combinations (only if template doesn't exist - checked earlier)
-    console.log(`[generateTimetableSchedules] Generating schedules with ${preferredInstructorNames.length} preferred instructor(s): ${preferredInstructorNames.join(", ")}`);
-    const schedules = generateScheduleCombinations(
+    // Generate BASE schedules WITHOUT filters (no excluded days, no instructor preferences)
+    // Filters are applied at REQUEST TIME, not generation time
+    console.log(`[generateTimetableSchedules] Generating BASE schedules (no filters applied during generation)`);
+    const baseSchedules = generateScheduleCombinations(
       coreCoursesWithSessions,
       electiveCoursesWithSessions,
-      excludedDays,
-      preferredInstructorNames
+      [], // NO excluded days during base generation
+      []  // NO instructor preferences during base generation
     );
 
-    console.log(`[generateTimetableSchedules] Generated ${schedules.length} valid schedule(s)`);
+    console.log(`[generateTimetableSchedules] Generated ${baseSchedules.length} BASE schedule(s)`);
 
-    // Sort by score (fewest gaps, fewest days)
-    schedules.sort((a, b) => b.score - a.score);
+    // Sort by base score (days, gaps only)
+    baseSchedules.sort((a, b) => b.score - a.score);
 
-    // Return top 50 schedules (sorted descending by score)
-    const topSchedules = schedules.slice(0, 50);
+    // Store more schedules in template (up to 300) so filtering has enough to work with
+    const topSchedules = baseSchedules.slice(0, 300);
 
-    console.log(`[generateTimetableSchedules] Returning top ${topSchedules.length} schedule(s)`);
+    console.log(`[generateTimetableSchedules] Storing top ${topSchedules.length} BASE schedule(s) in template`);
 
-    if (topSchedules.length === 0 && schedules.length === 0) {
+    if (topSchedules.length === 0 && baseSchedules.length === 0) {
       return res.json({
         success: true,
         data: [],
-        message: "No valid schedules could be generated. This might be because: 1) Courses don't have all required components (L, S, LB) scheduled, 2) There are time conflicts between courses, or 3) Your excluded days are too restrictive. Please check that all courses have their Lecture (L) and Section (S) sessions scheduled.",
+        message: "No valid schedules could be generated. This might be because: 1) Courses don't have all required components (L, S, LB) scheduled, 2) There are time conflicts between courses. Please check that all courses have their Lecture (L) and Section (S) sessions scheduled.",
       });
     }
+    
+    // NOW apply filters for THIS request (the base schedules will be saved to template)
+    console.log(`[generateTimetableSchedules] 🔄 Applying filters to generated schedules...`);
+    const filteredSchedules = applyFiltersAndRescore(
+      topSchedules,
+      sortedExcludedDays.length > 0 ? sortedExcludedDays : null,
+      sortedExcludedCoreIds,
+      preferredInstructorNames.length > 0 ? preferredInstructorNames : null,
+      50
+    );
+    
+    console.log(`[generateTimetableSchedules] ✅ After filtering: ${filteredSchedules.length} schedules for this request`);
 
-    // UPDATE the reserved template with actual schedules (non-blocking)
+    // UPDATE the reserved BASE template with actual schedules (non-blocking)
     // We already reserved this hash with a placeholder, now fill in the real data
+    // These are BASE schedules (no filters applied) - filters are applied at request time
     setTimeout(async () => {
       try {
         const isReady = await ensureDbConnection();
@@ -2548,7 +2551,7 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
           return;
         }
 
-        // UPDATE the existing reserved template with actual schedules
+        // UPDATE the existing reserved template with BASE schedules
         // Set is_generating to false to signal completion
         const updateResult = await AppDataSource.query(
           `UPDATE schedule_templates 
@@ -2562,14 +2565,14 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
           [
             JSON.stringify(topSchedules),
             topSchedules.length,
-            preferencesHash,
+            baseTemplateHash,
           ]
         );
 
         if (updateResult && updateResult.length > 0) {
-          console.log(`[generateTimetableSchedules] 💾 Updated template with hash ${preferencesHash} for term ${actualTermId} (${topSchedules.length} schedules)`);
+          console.log(`[generateTimetableSchedules] 💾 Updated BASE template with hash ${baseTemplateHash} for term ${actualTermId} (${topSchedules.length} schedules)`);
         } else {
-          console.log(`[generateTimetableSchedules] Template with hash ${preferencesHash} not found for update (unexpected)`);
+          console.log(`[generateTimetableSchedules] Base template with hash ${baseTemplateHash} not found for update (unexpected)`);
         }
       } catch (error: any) {
         // Log but don't block - template update is non-critical
@@ -2577,106 +2580,30 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
       }
     }, 100);
 
-    // Save to database cache (non-blocking - don't wait for it)
-    // Cache save is optional and should not block the response
-    // Use setTimeout with longer delay to ensure response is sent first
-    setTimeout(async () => {
-      try {
-        // Skip cache save if database connection is not available
-        const isReady = await ensureDbConnection();
-        if (!isReady) {
-          console.warn(`[generateTimetableSchedules] Database not available, skipping cache save`);
-          return;
-        }
+    // NOTE: schedule_cache table is no longer used - only schedule_templates with filtering
+    // This reduces database writes by 50%
 
-        const scheduleCacheRepo = AppDataSource.getRepository(ScheduleCache);
-        
-        // Use a simpler approach: try to create directly, catch duplicate errors
-        // This avoids the slow NULL-check query
-        try {
-          const newCacheEntry = scheduleCacheRepo.create({
-            term_id: actualTermId,
-            excluded_days: excludedDaysJson,
-            excluded_days_hash: excludedDaysHash,
-            elective_course_ids: electiveIdsJson,
-            elective_course_ids_hash: electiveIdsHash,
-            excluded_core_course_ids: excludedCoreIdsJson,
-            excluded_core_course_ids_hash: excludedCoreIdsHash,
-            schedules: topSchedules,
-            access_count: 1,
-          });
+    // Cache FILTERED results in memory for faster future access
+    cache.set(cacheKey, filteredSchedules, CACHE_TTL.SCHEDULES);
 
-          // Add timeout protection (10 seconds)
-          const savePromise = scheduleCacheRepo.save(newCacheEntry);
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error("Cache save timeout")), 10000)
-          );
-          
-          await Promise.race([savePromise, timeoutPromise]);
-          console.log(`[generateTimetableSchedules] Saved schedules to database cache for term ${actualTermId}`);
-        } catch (saveError: any) {
-          // If it's a unique constraint violation, try to update instead
-          if (saveError.code === "23505" || saveError.message?.includes("duplicate key") || saveError.message?.includes("unique constraint")) {
-            try {
-              // Try to find and update existing entry with timeout
-              const findPromise = scheduleCacheRepo.findOne({
-                where: {
-                  term_id: actualTermId,
-                  excluded_days_hash: excludedDaysHash,
-                  elective_course_ids_hash: electiveIdsHash !== null ? electiveIdsHash : IsNull(),
-                  excluded_core_course_ids_hash: excludedCoreIdsHash !== null ? excludedCoreIdsHash : IsNull(),
-                },
-              });
-              
-              const findTimeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error("Cache find timeout")), 5000)
-              );
-              
-              const existingEntry = await Promise.race([findPromise, findTimeoutPromise]) as ScheduleCache | null;
-              
-              if (existingEntry) {
-                existingEntry.schedules = topSchedules;
-                existingEntry.access_count += 1;
-                
-                const updatePromise = scheduleCacheRepo.save(existingEntry);
-                const updateTimeoutPromise = new Promise((_, reject) => 
-                  setTimeout(() => reject(new Error("Cache update timeout")), 5000)
-                );
-                
-                await Promise.race([updatePromise, updateTimeoutPromise]);
-                console.log(`[generateTimetableSchedules] Updated existing database cache entry for term ${actualTermId}`);
-              }
-            } catch (updateError: any) {
-              // Silently ignore update errors - cache is optional
-              if (!updateError.message?.includes("timeout")) {
-                console.warn(`[generateTimetableSchedules] Cache update failed (non-blocking):`, updateError.message?.substring(0, 100));
-              }
-            }
-          } else if (saveError.message?.includes("timeout") || saveError.message?.includes("ETIMEDOUT")) {
-            // Silently ignore timeout errors - cache is optional
-            console.warn(`[generateTimetableSchedules] Cache save timed out (non-blocking), skipping...`);
-          } else if (saveError.message?.includes("excluded_core_course_ids") || saveError.message?.includes("column") || saveError.message?.includes("does not exist")) {
-            console.warn(`[generateTimetableSchedules] Cannot save to cache - table needs migration. Skipping cache save.`);
-          } else {
-            // Log other errors but don't fail
-            console.warn(`[generateTimetableSchedules] Cache save failed (non-blocking):`, saveError.message?.substring(0, 100));
-          }
-        }
-      } catch (dbError: any) {
-        // Silently ignore all cache errors - cache is completely optional
-        if (!dbError.message?.includes("timeout")) {
-          console.warn(`[generateTimetableSchedules] Database cache operation failed (non-blocking):`, dbError.message?.substring(0, 100));
-        }
-      }
-    }, 100); // Small delay to ensure response is sent first
-
-    // Cache in memory for faster future access
-    cache.set(cacheKey, topSchedules, CACHE_TTL.SCHEDULES);
+    // Handle case where all schedules filtered out
+    if (filteredSchedules.length === 0) {
+      return res.json({
+        success: true,
+        data: [],
+        message: "No schedules match your preferences. Try removing some excluded days or changing your electives.",
+        baseTemplateHash: baseTemplateHash,
+      });
+    }
 
     return res.json({
       success: true,
-      data: topSchedules,
+      data: filteredSchedules,
       cached: false,
+      fromTemplate: false,
+      filtered: true,
+      baseTemplateHash: baseTemplateHash,
+      generatedNew: true,
     });
   } catch (error) {
     console.error("Error generating timetable schedules:", error);
@@ -2842,8 +2769,8 @@ export function generateScheduleCombinations(
   // Generate ALL possible combinations and permutations
   // Keep top schedules during generation, then return top 50
   const topSchedules: any[] = [];
-  const MAX_KEEP = 200; // Keep top 200 during generation to ensure we have excellent options
-  const TARGET_COUNT = 50; // Return top 50 schedules
+  const MAX_KEEP = 300; // Keep top 300 during generation to ensure we have excellent options for filtering
+  const TARGET_COUNT = 100; // Return top 100 schedules to user
   const MAX_COMBINATIONS = 5000000; // Increased to 5 million to explore MORE combinations
   
   // If no excluded days, we can be more aggressive with combinations
@@ -3551,40 +3478,31 @@ export function buildSchedule(combination: any[], excludedDays: string[], prefer
       }
     }
     
-    // Early validation: check if course has required components
-    // Rules based on component_types:
-    // - "L,S" -> requires L and S
-    // - "L,LB" -> requires L and LB
-    // - "L,S,LB" -> requires L and at least one of S or LB
-    // IMPORTANT: All components with sessions MUST be included as a bundle
+    // Early validation: check if course has at least one component with sessions
+    // NEW LOGIC: As long as AT LEAST ONE component has sessions, the course is valid
+    // This allows schedules to be generated even if some components (L, S, LB) 
+    // don't have sessions scheduled yet
     
     const hasL = componentMap.has("L") && componentMap.get("L")!.length > 0;
     const hasS = componentMap.has("S") && componentMap.get("S")!.length > 0;
     const hasLB = componentMap.has("LB") && componentMap.get("LB")!.length > 0;
     
+    // Course is valid if it has AT LEAST ONE component with sessions
+    // This is permissive - schedules work even if L, S, or LB are missing
+    const hasAtLeastOneComponent = hasL || hasS || hasLB;
+    
+    if (!hasAtLeastOneComponent) {
+      return null; // No components with sessions at all - cannot include this course
+    }
+    
+    // Log if course is missing expected components (for debugging, not blocking)
     const requiresL = componentTypes.includes("L");
     const requiresS = componentTypes.includes("S");
     const requiresLB = componentTypes.includes("LB");
     
-    // L is always required if componentTypes includes L
-    if (requiresL && !hasL) {
-      return null; // Missing required component L
-    }
-    
-    // If componentTypes includes S but NOT LB, then S is required
-    if (requiresS && !requiresLB && !hasS) {
-      return null; // Missing required component S
-    }
-    
-    // If componentTypes includes LB but NOT S, then LB is required
-    if (requiresLB && !requiresS && !hasLB) {
-      return null; // Missing required component LB
-    }
-    
-    // If componentTypes includes both S and LB, then at least one of S or LB must be present
-    if (requiresS && requiresLB && !hasS && !hasLB) {
-      return null; // Missing required components: needs at least one of S or LB
-    }
+    // NOTE: We NO LONGER require all components - course is valid with partial components
+    // Example: If course has L,S,LB but only L has sessions, that's OKAY
+    // The schedule will just include what's available
     
     // Add ALL sessions from ALL components to courseSessions
     // This ensures the course is taken as a complete bundle - all components must be included
@@ -3670,7 +3588,7 @@ export function buildSchedule(combination: any[], excludedDays: string[], prefer
         // CRITICAL: If excluded day has Lecture (L) sessions = MASSIVE penalty
         // This should be avoided at all costs - excluded days should only have S or LB
         if (componentTypesOnDay.has("L")) {
-          excludedDaysLecturePenalty += 50000000; // EXTREMELY heavy penalty - this is unacceptable
+          excludedDaysLecturePenalty += 100000000; // 100 MILLION penalty - EXTREMELY unacceptable
         }
         
         // Penalty for number of slots on excluded day
@@ -3799,7 +3717,7 @@ export function buildSchedule(combination: any[], excludedDays: string[], prefer
     // If an instructor teaches 2 courses: +100,000,000 (50 million per course)
     // And so on...
     preferredInstructorsBonus = 0;
-    const bonusPerCourse = 50000000; // 50 MILLION per course - very high priority
+    const bonusPerCourse = 100000000; // 100 MILLION per course - HIGHEST priority
     
     console.log(`[buildSchedule] Preferred instructor analysis:`);
     instructorCourses.forEach((courseIds, instructorName) => {
@@ -3843,6 +3761,22 @@ export function buildSchedule(combination: any[], excludedDays: string[], prefer
   schedule.totalDays = totalDays;
   schedule.gaps = gaps;
   schedule.days = daysArray; // Convert Set to Array for JSON serialization
+  
+  // Store instructor mapping for filtering (courseCode -> instructorName)
+  // This enables runtime filtering by preferred instructors
+  const instructorMap: { [courseCode: string]: string } = {};
+  const courseIdsSet = new Set<number>();
+  
+  schedule.sessions.forEach((s: any) => {
+    if (s.instructor && s.instructor.trim() && s.course) {
+      const courseCode = s.course.code || `Course_${s.course.id}`;
+      instructorMap[courseCode] = s.instructor.trim();
+      courseIdsSet.add(s.course.id);
+    }
+  });
+  
+  schedule.instructors = instructorMap;
+  schedule.courseIds = Array.from(courseIdsSet);
 
   return schedule;
 }

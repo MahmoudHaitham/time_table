@@ -378,11 +378,11 @@ async function generateAndSaveTemplate(
     preferredInstructors // Apply preferred instructors
   );
   
-  // Sort and limit (top 50 for final schedules)
+  // Sort and limit (top 300 for template storage - more schedules for better filtering)
   schedules.sort((a, b) => b.score - a.score);
-  const topSchedules = schedules.slice(0, 50);
+  const topSchedules = schedules.slice(0, 300);
   
-  console.log(`[generateAndSaveTemplate] Generated ${topSchedules.length} schedules (from ${schedules.length} total)`);
+  console.log(`[generateAndSaveTemplate] Generated ${topSchedules.length} schedules (from ${schedules.length} total) - storing top 300 for filtering`);
   
   // Save template with preferences_hash
   const templateRepo = AppDataSource.getRepository(ScheduleTemplate);

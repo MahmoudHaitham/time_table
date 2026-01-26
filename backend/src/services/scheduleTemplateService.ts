@@ -71,7 +71,7 @@ export function filterSchedulesByPreferences(
       instructorCourses.forEach((courseIds) => {
         totalCourses += courseIds.size;
       });
-      preferredInstructorBonus = totalCourses * 50000000; // Same bonus as in original code
+      preferredInstructorBonus = totalCourses * 100000000; // 100 MILLION per course - HIGHEST priority
     }
     
     // Recalculate excluded days penalty (consistent with original scoring)
@@ -102,7 +102,7 @@ export function filterSchedulesByPreferences(
           const componentTypesOnDay = daysComponentTypes.get(excludedDay) || new Set();
           
           if (componentTypesOnDay.has("L")) {
-            excludedDaysLecturePenalty += 50000000;
+            excludedDaysLecturePenalty += 100000000; // 100 MILLION penalty per excluded day with lecture
           }
           
           if (slotsCount === 1) {
@@ -202,7 +202,7 @@ export function filterSchedulesByPreferences(
   console.log(`[filterSchedulesByPreferences] ✅ Filtered in ${filterTime}ms (${baseSchedules.length} → ${filteredSchedules.length} schedules)`);
   
   // Return top 50 schedules
-  return filteredSchedules.slice(0, 50);
+  return filteredSchedules.slice(0, 100);
 }
 
 /**
