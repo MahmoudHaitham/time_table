@@ -76,7 +76,7 @@ async function copyLectureSessionsFromOddClass(
     const oddLComponents = await componentRepo.find({
       where: {
         class_course_id: In(oddClassCourses.map(cc => cc.id)),
-        component_type: "L",
+        component_type: ComponentType.LECTURE,
       },
       relations: ["classCourse"],
     });
@@ -110,7 +110,7 @@ async function copyLectureSessionsFromOddClass(
       const newLComponent = await componentRepo.findOne({
         where: {
           class_course_id: newClassCourseId,
-          component_type: "L",
+          component_type: ComponentType.LECTURE,
         },
       });
 

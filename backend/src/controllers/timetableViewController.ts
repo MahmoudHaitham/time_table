@@ -9,6 +9,7 @@ import { CourseComponent, ComponentType } from "../entities/CourseComponent";
 import { Course } from "../entities/Course";
 import { Session, Day } from "../entities/Session";
 import { ScheduleCache } from "../entities/ScheduleCache";
+import { ScheduleTemplate } from "../entities/ScheduleTemplate";
 import { User } from "../entities/User";
 import { cache, cacheKeys, CACHE_TTL } from "../utils/cache";
 import * as crypto from "crypto";
@@ -1368,6 +1369,107 @@ export const getAllElectiveSlots = async (req: Request, res: Response) => {
  * No filtering by student term_number
  * Used for students who don't belong to a fixed academic term or have special cases
  */
+/**
+ * ADMIN ONLY: Get all courses (both core and elective) for a term by raw term ID
+ * This endpoint is for admin use where term tokens are not used
+ */
+export const getAdminTermCourses = async (req: Request, res: Response) => {
+  try {
+    const termIdParam = Array.isArray(req.params.termId) ? req.params.termId[0] : req.params.termId;
+    const termId = parseInt(termIdParam);
+    const systemTypeQuery = req.query.systemType;
+    const systemTypeParam = typeof systemTypeQuery === 'string' ? systemTypeQuery : (Array.isArray(systemTypeQuery) ? systemTypeQuery[0] : null);
+    const systemType = systemTypeParam && typeof systemTypeParam === 'string' ? parseInt(systemTypeParam) : null;
+
+    if (!termId || isNaN(termId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid term ID is required",
+      });
+    }
+
+    if (!systemType || ![140, 160, 180].includes(systemType)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid systemType (140, 160, or 180) is required",
+      });
+    }
+
+    // Verify term exists (no need to check is_published for admin)
+    const termRepo = AppDataSource.getRepository(Term);
+    const term = await termRepo.findOne({
+      where: { id: termId },
+    });
+
+    if (!term) {
+      return res.status(404).json({
+        success: false,
+        message: "Term not found",
+      });
+    }
+
+    // Get all classes for this term and system
+    const classRepo = AppDataSource.getRepository(Class);
+    const classes = await classRepo.find({
+      where: { 
+        term_id: term.id,
+        system_type: systemType,
+      },
+    });
+
+    if (classes.length === 0) {
+      return res.json({
+        success: true,
+        data: [],
+        message: `No classes found for term ${termId} with system ${systemType}`,
+      });
+    }
+
+    // Get all class courses
+    const classCourseRepo = AppDataSource.getRepository(ClassCourse);
+    const classIds = classes.map(c => c.id);
+    const classCourses = await classCourseRepo.find({
+      where: { class_id: In(classIds) },
+      relations: ["course"],
+    });
+
+    // Extract unique courses (both core and elective)
+    const coursesMap = new Map<number, any>();
+    classCourses.forEach(cc => {
+      if (!coursesMap.has(cc.course.id)) {
+        coursesMap.set(cc.course.id, {
+          id: cc.course.id,
+          code: cc.course.code,
+          name: cc.course.name,
+          is_elective: cc.course.is_elective,
+          term_number: cc.course.term_number,
+        });
+      }
+    });
+
+    const allCourses = Array.from(coursesMap.values());
+    
+    // Sort: core courses first, then electives, alphabetically within each group
+    allCourses.sort((a, b) => {
+      if (a.is_elective !== b.is_elective) {
+        return a.is_elective ? 1 : -1; // Core first
+      }
+      return a.code.localeCompare(b.code);
+    });
+
+    return res.json({
+      success: true,
+      data: allCourses,
+    });
+  } catch (error) {
+    console.error("Error fetching admin term courses:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
 export const getAllCoursesForOther = async (req: Request, res: Response) => {
   try {
     // Get systemType from query parameter (required)
@@ -1867,10 +1969,11 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
     const excludedDaysKey = sortedExcludedDays.join(",");
     const electiveIdsKey = sortedElectiveIds ? sortedElectiveIds.join(",") : "none";
     const excludedCoreIdsKey = sortedExcludedCoreIds ? sortedExcludedCoreIds.join(",") : "none";
-    const cacheKey = cacheKeys.schedule(parsedTermId, excludedDaysKey, electiveIdsKey, excludedCoreIdsKey) + `_system_${scheduleSystemType}`;
+    const preferredInstructorsKey = preferredInstructorNames.length > 0 ? preferredInstructorNames.sort().join(",") : "none";
+    const cacheKey = cacheKeys.schedule(parsedTermId, excludedDaysKey, electiveIdsKey, excludedCoreIdsKey) + `_system_${scheduleSystemType}_inst_${preferredInstructorsKey}`;
     const cached = cache.get(cacheKey);
     if (cached) {
-      console.log(`[generateTimetableSchedules] Cache hit for term ${parsedTermId}`);
+      console.log(`[generateTimetableSchedules] ✅ In-memory cache hit for term ${parsedTermId}`);
       return res.json({
         success: true,
         data: cached,
@@ -1878,9 +1981,276 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
       });
     }
 
+    // NEW APPROACH: Use unified preferences_hash for instant lookup
+    // Generate hash from ALL preferences (same methodology as admin templates)
+    console.log(`[generateTimetableSchedules] 🔍 Generating preferences hash and checking template...`);
+    const templateCheckStart = Date.now();
+    
+    // Import unified hash utility
+    const { generatePreferencesHash } = await import("../utils/preferencesHash");
+    
+    // Generate unified preferences hash (same methodology as admin)
+    const preferencesHash = generatePreferencesHash({
+      termId: parsedTermId,
+      systemType: scheduleSystemType,
+      electiveCourseIds: sortedElectiveIds,
+      excludedDays: sortedExcludedDays.length > 0 ? sortedExcludedDays : null,
+      excludedCoreCourseIds: sortedExcludedCoreIds,
+      preferredInstructors: preferredInstructorNames.length > 0 ? preferredInstructorNames : null,
+    });
+    
+    console.log(`[generateTimetableSchedules] Preferences hash: ${preferencesHash}`);
+    console.log(`  Preferences: term=${parsedTermId}, system=${scheduleSystemType}, electives=${sortedElectiveIds?.join(",") || "none"}, excludedDays=${sortedExcludedDays.join(",") || "none"}, excludedCore=${sortedExcludedCoreIds?.join(",") || "none"}, instructors=${preferredInstructorNames.join(",") || "none"}`);
+
+    // DEBUG: Check what templates exist for this term/system
+    try {
+      const debugTemplates = await AppDataSource.query(
+        `SELECT id, preferences_hash, schedule_count, is_generating FROM schedule_templates WHERE term_id = $1 AND system_type = $2 LIMIT 5`,
+        [parsedTermId, scheduleSystemType]
+      );
+      console.log(`[generateTimetableSchedules] DEBUG: Existing templates for term=${parsedTermId}, system=${scheduleSystemType}:`);
+      if (debugTemplates && debugTemplates.length > 0) {
+        debugTemplates.forEach((t: any) => {
+          console.log(`  - ID: ${t.id}, hash: ${t.preferences_hash}, schedules: ${t.schedule_count}, generating: ${t.is_generating}`);
+        });
+      } else {
+        console.log(`  - No templates found`);
+      }
+    } catch (e) {
+      console.log(`[generateTimetableSchedules] DEBUG: Could not fetch existing templates`);
+    }
+
+    // CRITICAL: Check template existence IMMEDIATELY after hash generation
+    // This MUST happen BEFORE any expensive database queries or generation work
+    // Check by BOTH new preferences_hash AND old composite key for backward compatibility
+    const scheduleTemplateRepo = AppDataSource.getRepository(ScheduleTemplate);
+    let existingTemplate: ScheduleTemplate | null = null;
+    
+    // Compute elective_combination_hash for backward compatibility check
+    const electiveIdsJsonForCheck = sortedElectiveIds ? JSON.stringify(sortedElectiveIds) : null;
+    const electiveCombinationHashForCheck = electiveIdsJsonForCheck 
+      ? crypto.createHash("md5").update(electiveIdsJsonForCheck).digest("hex")
+      : null;
+    
+    try {
+      // First: Check by NEW preferences_hash
+      const findByHashPromise = scheduleTemplateRepo.findOne({
+        where: { preferences_hash: preferencesHash },
+        select: ["id", "schedule_count", "preferences_hash", "base_schedules"],
+      });
+      
+      const timeoutPromise = new Promise<null>((_, reject) => 
+        setTimeout(() => reject(new Error("Template existence check timeout")), 5000)
+      );
+      
+      existingTemplate = await Promise.race([findByHashPromise, timeoutPromise]) as ScheduleTemplate | null;
+      
+      // If not found by new hash, check by OLD composite key (backward compatibility)
+      if (!existingTemplate) {
+        console.log(`[generateTimetableSchedules] Not found by preferences_hash, checking OLD method...`);
+        
+        const findByOldKeyPromise = scheduleTemplateRepo.findOne({
+          where: { 
+            term_id: parsedTermId,
+            system_type: scheduleSystemType,
+            elective_combination_hash: electiveCombinationHashForCheck,
+          },
+          select: ["id", "schedule_count", "preferences_hash", "base_schedules"],
+        });
+        
+        existingTemplate = await Promise.race([findByOldKeyPromise, timeoutPromise]) as ScheduleTemplate | null;
+        
+        if (existingTemplate) {
+          console.log(`[generateTimetableSchedules] ✅ Found by OLD method (ID: ${existingTemplate.id}), updating with new preferences_hash...`);
+          
+          // Update the old template with the new preferences_hash for future lookups
+          setImmediate(async () => {
+            try {
+              await AppDataSource.query(
+                `UPDATE schedule_templates SET preferences_hash = $1 WHERE id = $2 AND preferences_hash IS NULL`,
+                [preferencesHash, existingTemplate!.id]
+              );
+              console.log(`[generateTimetableSchedules] Updated template ${existingTemplate!.id} with preferences_hash ${preferencesHash}`);
+            } catch (e) { /* ignore - might conflict if another request updated */ }
+          });
+        }
+      }
+    } catch (error: any) {
+      if (error.message?.includes("timeout")) {
+        console.warn(`[generateTimetableSchedules] Template existence check timed out after 5s, continuing without template`);
+      } else {
+        console.error(`[generateTimetableSchedules] Error checking template existence:`, error.message);
+      }
+      // Continue without template if check fails
+      existingTemplate = null;
+    }
+
+    const templateCheckTime = Date.now() - templateCheckStart;
+    console.log(`[generateTimetableSchedules] Template existence check: ${templateCheckTime}ms`);
+
+    // If template exists, load schedules and return IMMEDIATELY (skip ALL expensive work)
+    if (existingTemplate) {
+      console.log(`[generateTimetableSchedules] ✅ Template exists for hash ${preferencesHash}, skipping generation`);
+      console.log(`[generateTimetableSchedules] Found existing template (ID: ${existingTemplate.id}) with ${existingTemplate.schedule_count} schedules`);
+      
+      // Use schedules directly from existingTemplate (already loaded in findOne with select)
+      const schedules = existingTemplate.base_schedules || [];
+      
+      if (!schedules || schedules.length === 0 || !Array.isArray(schedules)) {
+        console.log(`[generateTimetableSchedules] ⚠️  Template found but schedules are empty, will generate new...`);
+        // Continue to generation below
+      } else {
+        // Template found with schedules - return IMMEDIATELY (skip ALL expensive work)
+        console.log(`[generateTimetableSchedules] ✅ Returning ${schedules.length} pre-filtered schedules (NO generation needed!)`);
+        
+        // Update access count asynchronously (don't block response)
+        setImmediate(async () => {
+          try {
+            await scheduleTemplateRepo.update(
+              { preferences_hash: preferencesHash },
+              { 
+                access_count: () => "access_count + 1",
+                last_accessed_at: new Date(),
+              }
+            );
+          } catch (err: any) {
+            // Ignore errors - non-critical
+          }
+        });
+
+        // Take top 50 (already sorted by score)
+        const topSchedules = schedules.slice(0, 50);
+        
+        // Cache the result in memory
+        cache.set(cacheKey, topSchedules);
+        
+        return res.json({
+          success: true,
+          data: topSchedules,
+          cached: false,
+          fromTemplate: true,
+          templateId: existingTemplate.id,
+          preferences_hash: preferencesHash,
+        });
+      }
+    }
+
+    // No template found in first check - use RESERVATION pattern to prevent race conditions
+    // Try to INSERT a placeholder first. If we succeed, we "own" this hash and can generate.
+    // If we fail (conflict), another request already owns it - wait and fetch their result.
+    console.log(`[generateTimetableSchedules] ⚠️  No template in first check, attempting to RESERVE hash ${preferencesHash}...`);
+    
+    // Prepare placeholder data for reservation
+    const sortedElectiveIdsForReserve = electiveCourseIds ? [...electiveCourseIds].sort((a, b) => a - b) : null;
+    const electiveIdsJsonReserve = sortedElectiveIdsForReserve ? JSON.stringify(sortedElectiveIdsForReserve) : null;
+    const electiveHashReserve = electiveIdsJsonReserve 
+      ? crypto.createHash("md5").update(electiveIdsJsonReserve).digest("hex")
+      : null;
+    
+    let reservedTemplateId: number | null = null;
+    let templateAlreadyExists = false;
+    
+    try {
+      // Try to INSERT a placeholder template with empty schedules
+      // ON CONFLICT DO NOTHING - if another request already reserved, this returns empty
+      const reserveResult = await AppDataSource.query(
+        `INSERT INTO schedule_templates (
+          preferences_hash, term_id, system_type, elective_course_ids, 
+          elective_combination_hash, excluded_days, excluded_core_course_ids, 
+          preferred_instructors, base_schedules, schedule_count, access_count, last_accessed_at, is_generating
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, '[]'::jsonb, 0, 0, NOW(), true)
+        ON CONFLICT (preferences_hash) DO NOTHING
+        RETURNING id`,
+        [
+          preferencesHash,
+          parsedTermId,
+          scheduleSystemType,
+          electiveIdsJsonReserve,
+          electiveHashReserve,
+          sortedExcludedDays.length > 0 ? JSON.stringify(sortedExcludedDays) : null,
+          sortedExcludedCoreIds && sortedExcludedCoreIds.length > 0 ? JSON.stringify(sortedExcludedCoreIds) : null,
+          preferredInstructorNames.length > 0 ? JSON.stringify(preferredInstructorNames) : null,
+        ]
+      );
+      
+      if (reserveResult && reserveResult.length > 0) {
+        // We successfully reserved this hash - we own it!
+        reservedTemplateId = reserveResult[0].id;
+        console.log(`[generateTimetableSchedules] ✅ RESERVED hash ${preferencesHash} (template ID: ${reservedTemplateId}) - we will generate`);
+      } else {
+        // Conflict - another request already reserved/saved this hash
+        templateAlreadyExists = true;
+        console.log(`[generateTimetableSchedules] ⚠️  Hash ${preferencesHash} already reserved by another request - fetching their result...`);
+      }
+    } catch (reserveError: any) {
+      // If reserve fails, check if template exists
+      console.warn(`[generateTimetableSchedules] Reserve error:`, reserveError.message?.substring(0, 50));
+      templateAlreadyExists = true;
+    }
+    
+    // If template already exists (reserved by another request), wait for it and return
+    if (templateAlreadyExists) {
+      // Wait a bit for the other request to finish generating (poll with backoff)
+      for (let attempt = 0; attempt < 30; attempt++) { // Max 30 seconds wait
+        await new Promise(r => setTimeout(r, 1000)); // Wait 1 second between checks
+        
+        try {
+          const existingResult = await AppDataSource.query(
+            `SELECT id, schedule_count, base_schedules, is_generating FROM schedule_templates WHERE preferences_hash = $1 LIMIT 1`,
+            [preferencesHash]
+          );
+          
+          if (existingResult && existingResult.length > 0) {
+            const row = existingResult[0];
+            const schedules = row.base_schedules || [];
+            
+            // Check if generation is complete (has schedules or is_generating is false)
+            if (schedules.length > 0 || row.is_generating === false) {
+              console.log(`[generateTimetableSchedules] ✅ Other request completed - returning ${schedules.length} schedules`);
+              
+              // Update access count
+              setImmediate(async () => {
+                try {
+                  await AppDataSource.query(
+                    `UPDATE schedule_templates SET access_count = access_count + 1, last_accessed_at = NOW() WHERE preferences_hash = $1`,
+                    [preferencesHash]
+                  );
+                } catch (e) { /* ignore */ }
+              });
+              
+              const topSchedules = schedules.slice(0, 50);
+              cache.set(cacheKey, topSchedules);
+              
+              return res.json({
+                success: true,
+                data: topSchedules,
+                cached: false,
+                fromTemplate: true,
+                templateId: row.id,
+                preferences_hash: preferencesHash,
+              });
+            }
+            
+            console.log(`[generateTimetableSchedules] Waiting for other request to complete generation... (attempt ${attempt + 1}/30)`);
+          }
+        } catch (pollError) {
+          // Ignore poll errors, keep waiting
+        }
+      }
+      
+      // If we waited 30 seconds and still no result, something went wrong - generate anyway
+      console.warn(`[generateTimetableSchedules] Timeout waiting for other request - will try to generate ourselves`);
+    }
+
+    // We own this hash (reserved successfully) - proceed with generation
+    console.log(`[generateTimetableSchedules] 🔨 Starting schedule generation for hash ${preferencesHash}`);
+    console.log(`  Preferences: term=${parsedTermId}, system=${scheduleSystemType}, excluded=${excludedDaysKey}, electives=${electiveIdsKey}, excluded_core=${excludedCoreIdsKey}, instructors=${preferredInstructorNames.length}`);
+
     // Skip database cache lookup to prevent timeout issues
     // Cache is optional and will be saved asynchronously after response
     let existingCache = null;
+    
+    // Note: Template will be saved after schedule generation (see below)
 
     // Helper function to retry database operations with exponential backoff
     const retryQuery = async <T>(
@@ -1931,6 +2301,9 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
         message: "Published term not found",
       });
     }
+
+    // Capture actual term ID from database (source of truth for logging)
+    const actualTermId = term.id;
 
     // Get all classes for this term and system
     const classRepo = AppDataSource.getRepository(Class);
@@ -2138,7 +2511,7 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
     console.log(`  - Classes with courses that have sessions: ${classesInUse.size} (${Array.from(classesInUse).sort().join(", ")})`);
     console.log(`  - Classes missing sessions: ${Array.from(classesWithCourses).filter(c => !classesInUse.has(c)).sort().join(", ") || "None"}`);
 
-    // Generate all possible combinations
+    // Generate all possible combinations (only if template doesn't exist - checked earlier)
     console.log(`[generateTimetableSchedules] Generating schedules with ${preferredInstructorNames.length} preferred instructor(s): ${preferredInstructorNames.join(", ")}`);
     const schedules = generateScheduleCombinations(
       coreCoursesWithSessions,
@@ -2165,6 +2538,45 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
       });
     }
 
+    // UPDATE the reserved template with actual schedules (non-blocking)
+    // We already reserved this hash with a placeholder, now fill in the real data
+    setTimeout(async () => {
+      try {
+        const isReady = await ensureDbConnection();
+        if (!isReady) {
+          console.warn(`[generateTimetableSchedules] Database not available, skipping template update`);
+          return;
+        }
+
+        // UPDATE the existing reserved template with actual schedules
+        // Set is_generating to false to signal completion
+        const updateResult = await AppDataSource.query(
+          `UPDATE schedule_templates 
+           SET base_schedules = $1, 
+               schedule_count = $2, 
+               access_count = 1, 
+               is_generating = false,
+               last_accessed_at = NOW()
+           WHERE preferences_hash = $3
+           RETURNING id`,
+          [
+            JSON.stringify(topSchedules),
+            topSchedules.length,
+            preferencesHash,
+          ]
+        );
+
+        if (updateResult && updateResult.length > 0) {
+          console.log(`[generateTimetableSchedules] 💾 Updated template with hash ${preferencesHash} for term ${actualTermId} (${topSchedules.length} schedules)`);
+        } else {
+          console.log(`[generateTimetableSchedules] Template with hash ${preferencesHash} not found for update (unexpected)`);
+        }
+      } catch (error: any) {
+        // Log but don't block - template update is non-critical
+        console.warn(`[generateTimetableSchedules] Template update error:`, error.message?.substring(0, 50));
+      }
+    }, 100);
+
     // Save to database cache (non-blocking - don't wait for it)
     // Cache save is optional and should not block the response
     // Use setTimeout with longer delay to ensure response is sent first
@@ -2183,7 +2595,7 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
         // This avoids the slow NULL-check query
         try {
           const newCacheEntry = scheduleCacheRepo.create({
-            term_id: parsedTermId,
+            term_id: actualTermId,
             excluded_days: excludedDaysJson,
             excluded_days_hash: excludedDaysHash,
             elective_course_ids: electiveIdsJson,
@@ -2201,7 +2613,7 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
           );
           
           await Promise.race([savePromise, timeoutPromise]);
-          console.log(`[generateTimetableSchedules] Saved schedules to database cache for term ${parsedTermId}`);
+          console.log(`[generateTimetableSchedules] Saved schedules to database cache for term ${actualTermId}`);
         } catch (saveError: any) {
           // If it's a unique constraint violation, try to update instead
           if (saveError.code === "23505" || saveError.message?.includes("duplicate key") || saveError.message?.includes("unique constraint")) {
@@ -2209,7 +2621,7 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
               // Try to find and update existing entry with timeout
               const findPromise = scheduleCacheRepo.findOne({
                 where: {
-                  term_id: parsedTermId,
+                  term_id: actualTermId,
                   excluded_days_hash: excludedDaysHash,
                   elective_course_ids_hash: electiveIdsHash !== null ? electiveIdsHash : IsNull(),
                   excluded_core_course_ids_hash: excludedCoreIdsHash !== null ? excludedCoreIdsHash : IsNull(),
@@ -2232,7 +2644,7 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
                 );
                 
                 await Promise.race([updatePromise, updateTimeoutPromise]);
-                console.log(`[generateTimetableSchedules] Updated existing database cache entry for term ${parsedTermId}`);
+                console.log(`[generateTimetableSchedules] Updated existing database cache entry for term ${actualTermId}`);
               }
             } catch (updateError: any) {
               // Silently ignore update errors - cache is optional
@@ -2359,7 +2771,7 @@ function hasConflicts(combination: any[], conflictMatrix: Map<string, boolean>):
 /**
  * Generate all possible schedule combinations (optimized with constraint propagation and parallelization)
  */
-function generateScheduleCombinations(
+export function generateScheduleCombinations(
   coreCourses: any[],
   electiveCourses: any[],
   excludedDays: string[],
@@ -3317,12 +3729,13 @@ export function buildSchedule(combination: any[], excludedDays: string[], prefer
   
   const baseScore = 1000000000;
   
-  // Priority 1: Excluded days (MOST IMPORTANT)
+  // Priority 1: Excluded days (HIGHEST PRIORITY - user explicitly doesn't want these days)
+  // Increased weight: 500 million bonus for respecting excluded days
   let excludedDaysScore = 0;
   if (excludedDaysUsed === 0) {
-    excludedDaysScore = 100000000; // Massive bonus for perfect schedule (no excluded days)
+    excludedDaysScore = 500000000; // MASSIVE bonus for perfect schedule (no excluded days)
   } else {
-    excludedDaysScore = -(100000000 * excludedDaysUsed); // Massive penalty for using excluded days
+    excludedDaysScore = -(500000000 * excludedDaysUsed); // MASSIVE penalty for using excluded days
   }
   
   // Priority 2: Excluded days with Lecture sessions (CRITICAL - should never happen)
@@ -3380,12 +3793,13 @@ export function buildSchedule(combination: any[], excludedDays: string[], prefer
       }
     });
     
-    // Calculate bonus: 100000 points per course taught by preferred instructors (increased from 10000)
-    // If an instructor teaches 1 course: +100000
-    // If an instructor teaches 2 courses: +200000 (100000 per course)
+    // Calculate bonus: 50,000,000 points per course taught by preferred instructors (MASSIVE increase)
+    // This makes preferred instructors a TOP PRIORITY
+    // If an instructor teaches 1 course: +50,000,000
+    // If an instructor teaches 2 courses: +100,000,000 (50 million per course)
     // And so on...
     preferredInstructorsBonus = 0;
-    const bonusPerCourse = 100000; // Increased from 10000
+    const bonusPerCourse = 50000000; // 50 MILLION per course - very high priority
     
     console.log(`[buildSchedule] Preferred instructor analysis:`);
     instructorCourses.forEach((courseIds, instructorName) => {

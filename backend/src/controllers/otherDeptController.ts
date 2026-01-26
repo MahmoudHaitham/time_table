@@ -212,7 +212,7 @@ export const getOtherDeptCourses = async (req: Request, res: Response) => {
  */
 export const upsertComponentSession = async (req: Request, res: Response) => {
   try {
-    const { componentId } = req.params;
+    const componentIdParam = Array.isArray(req.params.componentId) ? req.params.componentId[0] : req.params.componentId;
     const { day, slot, room, instructor } = req.body;
 
     if (!day || !slot) {
@@ -239,7 +239,7 @@ export const upsertComponentSession = async (req: Request, res: Response) => {
       });
     }
 
-    const parsedComponentId = parseInt(componentId, 10);
+    const parsedComponentId = parseInt(String(componentIdParam), 10);
     if (isNaN(parsedComponentId)) {
       return res.status(400).json({
         success: false,
@@ -307,10 +307,10 @@ export const upsertComponentSession = async (req: Request, res: Response) => {
  */
 export const deleteComponentSession = async (req: Request, res: Response) => {
   try {
-    const { componentId } = req.params;
+    const componentIdParam = Array.isArray(req.params.componentId) ? req.params.componentId[0] : req.params.componentId;
     const { day, slot } = req.query;
 
-    const parsedComponentId = parseInt(componentId, 10);
+    const parsedComponentId = parseInt(String(componentIdParam), 10);
     if (isNaN(parsedComponentId)) {
       return res.status(400).json({
         success: false,
@@ -373,9 +373,9 @@ export const deleteComponentSession = async (req: Request, res: Response) => {
  */
 export const deleteOtherDeptCourse = async (req: Request, res: Response) => {
   try {
-    const { courseId } = req.params;
+    const courseIdParam = Array.isArray(req.params.courseId) ? req.params.courseId[0] : req.params.courseId;
 
-    const parsedCourseId = parseInt(courseId, 10);
+    const parsedCourseId = parseInt(String(courseIdParam), 10);
     if (isNaN(parsedCourseId)) {
       return res.status(400).json({
         success: false,

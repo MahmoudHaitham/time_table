@@ -11,9 +11,18 @@ import {
   generateOtherSectionSchedules,
   getInstructorsForTerm,
   getInstructorsForCourses,
+  getAdminTermCourses,
 } from "../controllers/timetableViewController";
+import {
+  getAllTemplates,
+  preGenerateTemplatesForTerm,
+  invalidateTermTemplates,
+  cleanupTemplates,
+  deleteTemplate,
+} from "../controllers/scheduleTemplateController";
 import { rateLimiters } from "../middleware/rateLimiter";
 import { sanitizeQueryArray } from "../middleware/validation";
+import { requireAuth, requireAdmin } from "../middleware/auth";
 
 const router = Router();
 
@@ -49,6 +58,25 @@ router.post("/other/generate", rateLimiters.scheduleGeneration, generateOtherSec
 
 // GET /timetable/classes/:classId - Get timetable for a specific class
 router.get("/classes/:classId", getClassTimetable);
+
+// **ADMIN ENDPOINTS - Schedule Template Management**
+// GET /timetable/admin/templates - Get all schedule templates (admin only)
+router.get("/admin/templates", requireAuth, requireAdmin, getAllTemplates);
+
+// GET /timetable/admin/terms/:termId/courses - Get all courses for a term (admin only, uses raw term ID)
+router.get("/admin/terms/:termId/courses", requireAuth, requireAdmin, getAdminTermCourses);
+
+// POST /timetable/admin/templates/generate/:termId - Pre-generate templates for a term (admin only)
+router.post("/admin/templates/generate/:termId", requireAuth, requireAdmin, preGenerateTemplatesForTerm);
+
+// DELETE /timetable/admin/templates/:termId/invalidate - Invalidate all templates for a term (admin only)
+router.delete("/admin/templates/:termId/invalidate", requireAuth, requireAdmin, invalidateTermTemplates);
+
+// DELETE /timetable/admin/templates/:templateId - Delete a specific template (admin only)
+router.delete("/admin/templates/:templateId", requireAuth, requireAdmin, deleteTemplate);
+
+// POST /timetable/admin/templates/cleanup - Cleanup old templates (admin only)
+router.post("/admin/templates/cleanup", requireAuth, requireAdmin, cleanupTemplates);
 
 export default router;
 

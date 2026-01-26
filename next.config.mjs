@@ -31,6 +31,9 @@ const nextConfig = {
   productionBrowserSourceMaps: false,
   poweredByHeader: false,
   compress: true,
+  
+  // Standalone output for Docker
+  output: process.env.NODE_ENV === 'production' ? 'standalone' : undefined,
 };
 
 export default nextConfig;

@@ -1,0 +1,51 @@
+# Node modules (will be installed in container)
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Development files
+.git
+.gitignore
+*.md
+README.md
+
+# Environment files (will be mounted separately)
+.env.example
+.env.test
+.env.local
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Build artifacts from host
+dist
+build
+coverage
+
+# Scripts
+*.ps1
+*.sh
+
+# SQL files
+*.sql
+
+# Logs
+logs
+*.log
+
+# Frontend folder (exclude from backend build)
+../frontend
+../app
+../components
+../public
+../lib
+../data

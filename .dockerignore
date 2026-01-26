@@ -1,0 +1,62 @@
+# Node modules (will be installed in container)
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Next.js build output
+.next
+out
+dist
+build
+tempNext
+
+# Backend folder (exclude from frontend build)
+backend
+
+# Development files
+.git
+.gitignore
+*.md
+README.md
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Testing
+coverage
+.coverage
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+tests
+
+# CI/CD
+.github
+cicd
+
+# Misc
+.cache
+.eslintcache
+.eslintrc.json
+docker-compose.yml
+deploy.sh
+
+# Archives
+*.zip

@@ -27,15 +27,21 @@ const app = express();
 app.set("trust proxy", 1);
 
 // CORS Configuration - MUST BE FIRST, before any other middleware
-const allowedOrigins = (
+// Support multiple environment variable names for flexibility
+// Priority: ALLOWED_ORIGINS > CORS_ORIGIN > CLIENT_URL > default
+const allowedOriginsRaw = 
   process.env.ALLOWED_ORIGINS ||
+  process.env.CORS_ORIGIN ||
   process.env.CLIENT_URL ||
-  "http://localhost:8000,http://localhost:3000"
-)
+  "http://localhost:8000,http://localhost:3000";
+
+const allowedOrigins = allowedOriginsRaw
   .split(",")
-  .map((origin) => origin.trim());
+  .map((origin) => origin.trim())
+  .filter((origin) => origin.length > 0); // Remove empty strings
 
 const isDevelopment = process.env.NODE_ENV !== "production";
+console.log(`🔧 Environment: NODE_ENV=${process.env.NODE_ENV || "not set"}, isDevelopment=${isDevelopment}`);
 
 // CORS - FIRST MIDDLEWARE (before body parser, cookie parser, everything)
 // This MUST be first to handle preflight OPTIONS requests
@@ -79,6 +85,7 @@ app.use(corsMiddleware);
 // Log CORS configuration on startup
 console.log(`🌐 CORS Configuration: ${isDevelopment ? "DEVELOPMENT (allowing all origins)" : "PRODUCTION (strict origin checking)"}`);
 console.log(`   Allowed origins: ${allowedOrigins.join(", ")}`);
+console.log(`   Environment variables checked: ALLOWED_ORIGINS=${process.env.ALLOWED_ORIGINS || "not set"}, CORS_ORIGIN=${process.env.CORS_ORIGIN || "not set"}, CLIENT_URL=${process.env.CLIENT_URL || "not set"}`);
 
 // Explicit OPTIONS handler for all routes (as backup to cors middleware)
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -185,7 +192,8 @@ app.get("/", (req: Request, res: Response) => {
   });
 });
 
-app.get("/health", (req: Request, res: Response) => {
+// Health check handler function (reusable)
+const healthCheckHandler = (req: Request, res: Response) => {
   // Explicitly set CORS headers (though cors middleware should handle this)
   const origin = req.headers.origin;
   if (origin && (isDevelopment || allowedOrigins.includes(origin))) {
@@ -202,7 +210,11 @@ app.get("/health", (req: Request, res: Response) => {
       allowed: isDevelopment || !origin || allowedOrigins.includes(origin),
     },
   });
-});
+};
+
+// Health check endpoints (both /health and /api/health)
+app.get("/health", healthCheckHandler);
+app.get("/api/health", healthCheckHandler);
 
 // Test endpoint for CORS debugging
 app.get("/api/test", (req: Request, res: Response) => {

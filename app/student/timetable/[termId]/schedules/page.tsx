@@ -1282,6 +1282,7 @@ export default function SchedulesPage() {
         title={alertModal.title}
         message={alertModal.message}
       />
+      </div>
     </div>
   );
 }

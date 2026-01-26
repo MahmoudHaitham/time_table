@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { AppDataSource } from "../config/data-source";
 import { Session, Day } from "../entities/Session";
-import { CourseComponent } from "../entities/CourseComponent";
+import { CourseComponent, ComponentType } from "../entities/CourseComponent";
 import { ClassCourse } from "../entities/ClassCourse";
 import { Class } from "../entities/Class";
 import { Term } from "../entities/Term";
@@ -88,7 +88,7 @@ async function syncLectureSessionToEvenClass(
     const evenLComponent = await componentRepo.findOne({
       where: {
         class_course_id: evenClassCourse.id,
-        component_type: "L",
+        component_type: ComponentType.LECTURE,
       },
     });
 
@@ -205,7 +205,7 @@ async function copyLectureSessionToEvenClass(
     const evenLComponent = await componentRepo.findOne({
       where: {
         class_course_id: evenClassCourse.id,
-        component_type: "L",
+        component_type: ComponentType.LECTURE,
       },
     });
 
@@ -866,9 +866,12 @@ export const getAllInstructorsSchedule = async (req: Request, res: Response) => 
  */
 export const getInstructorSessions = async (req: Request, res: Response) => {
   try {
-    const { instructorName } = req.params;
+    // Normalize req.params.instructorName to string (can be string | string[])
+    const instructorNameParam = Array.isArray(req.params.instructorName) 
+      ? req.params.instructorName[0] 
+      : req.params.instructorName;
     
-    if (!instructorName || instructorName.trim() === "") {
+    if (!instructorNameParam || instructorNameParam.trim() === "") {
       return res.status(400).json({
         success: false,
         message: "Instructor name is required",
@@ -876,7 +879,7 @@ export const getInstructorSessions = async (req: Request, res: Response) => {
     }
 
     const sessionRepo = AppDataSource.getRepository(Session);
-    const trimmedName = instructorName.trim();
+    const trimmedName = instructorNameParam.trim();
     
     // Get all sessions where instructor matches exactly OR appears in comma-separated list
     // Using LIKE to match instructor name anywhere in the instructor field

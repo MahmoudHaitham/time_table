@@ -1,0 +1,36 @@
+# Production docker-compose.yml for VPS
+# Use this on your VPS server
+
+services:
+  backend:
+    image: mabouellais/timetable-backend:deploy
+    container_name: portfolio-backend
+    env_file: [ ./backend/.env ]
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 5000
+    ports:
+      - "0.0.0.0:5002:5000"  # Map host port 5002 to container port 5000
+    networks: [portfolio-network]
+    restart: unless-stopped
+    pull_policy: missing
+
+  frontend:
+    image: mabouellais/timetable-frontend:deploy
+    container_name: portfolio-frontend
+    environment:
+      NODE_ENV: production
+      API_URL: http://backend:5000  # Server-side (Next.js API routes use Docker network)
+      NEXT_PUBLIC_API_URL: /api  # Client-side (relative path - works with Caddy)
+    ports:
+      - "0.0.0.0:8001:8000"  # Map host port 8001 to container port 8000
+    depends_on:
+      - backend
+    networks: [portfolio-network]
+    restart: unless-stopped
+    pull_policy: missing
+
+networks:
+  portfolio-network:
+    driver: bridge

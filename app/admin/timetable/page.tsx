@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { termsAPI } from "@/lib/api/timetable";
 import Link from "next/link";
-import { LogOut, Plus, BookOpen, Trash2, User } from "lucide-react";
+import { LogOut, Plus, BookOpen, Trash2, User, Zap } from "lucide-react";
 import { useAdminAuth } from "../auth-check";
 
 interface Term {
@@ -157,6 +157,13 @@ export default function TimetableAdminPage() {
             <p className="text-gray-400 text-sm sm:text-base">Manage academic terms and schedules</p>
           </div>
           <div className="flex flex-wrap gap-2 sm:gap-3 md:gap-4 w-full sm:w-auto">
+            <Link
+              href="/admin/timetable/templates"
+              className="px-4 sm:px-5 md:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-lg hover:from-yellow-600 hover:to-orange-600 transition-all flex items-center gap-2 group text-sm sm:text-base min-h-[44px] font-semibold shadow-lg"
+            >
+              <Zap className="w-4 h-4 sm:w-5 sm:h-5 group-hover:scale-110 transition-transform flex-shrink-0" />
+              <span className="hidden sm:inline">Templates</span>
+            </Link>
             <Link
               href="/admin/timetable/courses"
               className="px-4 sm:px-5 md:px-6 py-2.5 sm:py-3 glass border border-white/10 rounded-lg hover:border-purple-500/50 transition-all flex items-center gap-2 group text-sm sm:text-base min-h-[44px]"

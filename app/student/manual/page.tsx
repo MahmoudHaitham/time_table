@@ -184,10 +184,10 @@ export default function StudentManualPage() {
                 href={getLink("/student/timetable")}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-500/20 border border-blue-500/50 rounded-lg text-blue-300 hover:bg-blue-500/30 transition-all"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-500/20 border border-blue-500/50 rounded-lg text-blue-300 hover:bg-blue-500/30 transition-all max-w-full"
               >
-                <ExternalLink className="w-4 h-4" />
-                {getLink("/student/timetable")}
+                <ExternalLink className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">{getLink("/student/timetable")}</span>
               </a>
             </div>
 
@@ -243,7 +243,7 @@ export default function StudentManualPage() {
                 What is the Public Timetable Page?
               </h3>
               <p className="text-gray-300 mb-4">
-                The Public Timetable page (<a href={getLink("/timetable")} className="text-teal-400 hover:underline">{getLink("/timetable")}</a>) is a public-facing page that displays all published academic timetables organized by system type. This page allows anyone to:
+                The Public Timetable page (<a href={getLink("/timetable")} className="text-teal-400 hover:underline truncate inline-block max-w-full align-bottom">{getLink("/timetable")}</a>) is a public-facing page that displays all published academic timetables organized by system type. This page allows anyone to:
               </p>
               <ul className="space-y-2 text-gray-300 mb-4">
                 <li className="flex items-start gap-2">
@@ -263,10 +263,10 @@ export default function StudentManualPage() {
                 href={getLink("/timetable")}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2 bg-teal-500/20 border border-teal-500/50 rounded-lg text-teal-300 hover:bg-teal-500/30 transition-all"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-teal-500/20 border border-teal-500/50 rounded-lg text-teal-300 hover:bg-teal-500/30 transition-all max-w-full"
               >
-                <ExternalLink className="w-4 h-4" />
-                Open Public Timetable Page
+                <ExternalLink className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">Open Public Timetable Page</span>
               </a>
             </div>
 
@@ -450,10 +450,10 @@ export default function StudentManualPage() {
               </ol>
               <a
                 href={getLink("/student/timetable")}
-                className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-cyan-500/20 border border-cyan-500/50 rounded-lg text-cyan-300 hover:bg-cyan-500/30 transition-all"
+                className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-cyan-500/20 border border-cyan-500/50 rounded-lg text-cyan-300 hover:bg-cyan-500/30 transition-all max-w-full"
               >
-                <ExternalLink className="w-4 h-4" />
-                Go to System Selection
+                <ExternalLink className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">Go to System Selection</span>
               </a>
             </div>
           </div>
@@ -695,10 +695,10 @@ export default function StudentManualPage() {
               </ul>
               <a
                 href={getLink("/student/timetable/other")}
-                className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-orange-500/20 border border-orange-500/50 rounded-lg text-orange-300 hover:bg-orange-500/30 transition-all"
+                className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-orange-500/20 border border-orange-500/50 rounded-lg text-orange-300 hover:bg-orange-500/30 transition-all max-w-full"
               >
-                <ExternalLink className="w-4 h-4" />
-                Open Other Section
+                <ExternalLink className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">Open Other Section</span>
               </a>
             </div>
 
@@ -786,10 +786,10 @@ export default function StudentManualPage() {
               </ul>
               <a
                 href={getLink("/student/timetable/electives")}
-                className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-indigo-500/20 border border-indigo-500/50 rounded-lg text-indigo-300 hover:bg-indigo-500/30 transition-all"
+                className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-indigo-500/20 border border-indigo-500/50 rounded-lg text-indigo-300 hover:bg-indigo-500/30 transition-all max-w-full"
               >
-                <ExternalLink className="w-4 h-4" />
-                View Electives
+                <ExternalLink className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">View Electives</span>
               </a>
             </div>
 
@@ -896,10 +896,10 @@ export default function StudentManualPage() {
               >
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-lg font-bold text-white">{link.name}</h3>
-                  <ExternalLink className="w-5 h-5 text-gray-400 group-hover:text-blue-400 transition-colors" />
+                  <ExternalLink className="w-5 h-5 text-gray-400 group-hover:text-blue-400 transition-colors flex-shrink-0" />
                 </div>
                 <p className="text-sm text-gray-400 mb-2">{link.desc}</p>
-                <p className="text-xs text-gray-500 font-mono break-all">{getLink(link.path)}</p>
+                <p className="text-xs text-gray-500 font-mono truncate overflow-hidden">{getLink(link.path)}</p>
               </a>
             ))}
           </div>
