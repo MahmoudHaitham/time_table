@@ -24,6 +24,24 @@ yarn-error.log*
 # Local env files
 .env
 .env*.local
+.env.example
+.env*.example
+backend/.env.production.example
+
+# Dev utility scripts (local only)
+/clear-all-cache.ps1
+/clear-cache.ps1
+/optimize.ps1
+/quick-fix.ps1
+/fix-backend-cors.sh
+/fix-ports.sh
+/deploy.sh
+
+# Accidental nested backend copy
+backend/backend/
+
+# Redundant stitched screenshot references (section PNGs are kept)
+docs/screenshots/**/*-full.png
 
 # Database dumps (upload to VPS manually)
 terms.sql

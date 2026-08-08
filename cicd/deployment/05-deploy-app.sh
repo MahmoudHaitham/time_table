@@ -20,14 +20,14 @@ if [ ! -f "$COMPOSE_FILE" ]; then
   exit 1
 fi
 
-if [ ! -f backend/.env ]; then
-  echo "❌ Error: backend/.env not found!"
-  echo "Copy backend/.env.production.example to backend/.env and fill in values."
-  exit 1
+if [ ! -f .env ] && [ -f deploy/vps/root.env.template ]; then
+  echo "⚠️  Root .env missing — copy deploy/vps/root.env.template to .env for Postgres credentials."
 fi
 
-if [ ! -f .env ] && [ -f .env.example ]; then
-  echo "⚠️  Root .env missing — copy .env.example to .env for Postgres credentials."
+if [ ! -f backend/.env ]; then
+  echo "❌ Error: backend/.env not found!"
+  echo "Copy deploy/vps/backend.env.template to backend/.env and fill in values."
+  exit 1
 fi
 
 compose() {
