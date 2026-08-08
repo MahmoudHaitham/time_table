@@ -12,7 +12,7 @@ import {
   electivesAPI,
   termsAPI,
 } from "@/lib/api/timetable";
-import { ArrowLeft, Plus, BookOpen, Calendar, MapPin, User, Clock, XCircle, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, BookOpen, Calendar, MapPin, User, Clock, XCircle, Trash2, Edit2, Lock, Unlock } from "lucide-react";
 import AlertModal from "@/components/ui/AlertModal";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 
@@ -34,6 +34,7 @@ interface ClassCourse {
   id: number;
   class_id: number;
   course_id: number;
+  closed?: boolean;
   course: Course;
   components: Component[];
 }
@@ -91,6 +92,7 @@ export default function ClassEditorPage() {
   const [selectedComponent, setSelectedComponent] = useState<Component | null>(null);
   const [selectedCourseForSlot, setSelectedCourseForSlot] = useState<number | null>(null);
   const [selectedComponentType, setSelectedComponentType] = useState<"L" | "S" | null>(null);
+  const [editingSession, setEditingSession] = useState<{ session: Session; component: Component; course: Course } | null>(null);
   const [alertModal, setAlertModal] = useState<{ isOpen: boolean; type: "success" | "error" | "warning" | "info"; title: string; message: string }>({
     isOpen: false,
     type: "success",
@@ -335,6 +337,30 @@ export default function ClassEditorPage() {
     }
   };
 
+  const handleToggleClosed = async (cc: ClassCourse, nextClosed: boolean) => {
+    try {
+      await classCoursesAPI.patch(cc.id, { closed: nextClosed });
+      setClassCourses(prev =>
+        prev.map(c => (c.id === cc.id ? { ...c, closed: nextClosed } : c))
+      );
+      setAlertModal({
+        isOpen: true,
+        type: "success",
+        title: nextClosed ? "Course closed" : "Course reopened",
+        message: nextClosed
+          ? `${cc.course.code} is now closed and will be excluded from timetable generation.`
+          : `${cc.course.code} is now open and included in generation.`,
+      });
+    } catch (err: any) {
+      setAlertModal({
+        isOpen: true,
+        type: "error",
+        title: "Failed to update",
+        message: err.message || "Could not update closed status.",
+      });
+    }
+  };
+
   const handleCellClick = (day: string, slot: number) => {
     // Check if slot is already occupied
     const hasExistingSession = classCourses.some((cc) =>
@@ -347,8 +373,15 @@ export default function ClassEditorPage() {
       setSelectedCell({ day, slot });
       setSelectedCourseForSlot(null);
       setSelectedComponentType(null);
+      setEditingSession(null);
       setShowSessionModal(true);
     }
+  };
+
+  const handleSessionClick = (item: { session: Session; component: Component; course: Course }) => {
+    setSelectedCell({ day: item.session.day, slot: item.session.slot });
+    setEditingSession(item);
+    setShowSessionModal(true);
   };
 
   const handleCreateSession = async (data: {
@@ -539,6 +572,78 @@ export default function ClassEditorPage() {
     }
   };
 
+  const handleUpdateSession = async (data: {
+    sessionId: number;
+    day: string;
+    slot: number;
+    room?: string;
+    instructor?: string;
+  }) => {
+    // Get current session info for success message
+    const sessionInfo = editingSession;
+    const courseCode = sessionInfo?.course.code || "Unknown Course";
+    const componentType = sessionInfo?.component.component_type;
+    const componentName = componentType === "L" ? "Lecture" : componentType === "S" ? "Section" : "Lab";
+    const timeInfo = `${data.day}, Slot ${data.slot}`;
+    const roomInfo = data.room ? ` in ${data.room}` : "";
+    const instructorInfo = data.instructor ? ` with ${data.instructor}` : "";
+    
+    // Close modal immediately
+    setShowSessionModal(false);
+    setSelectedCell(null);
+    setEditingSession(null);
+    
+    // Show success alert immediately (optimistic)
+    setAlertModal({
+      isOpen: true,
+      type: "success",
+      title: "Session Updated Successfully!",
+      message: `${componentName} session for ${courseCode} updated to ${timeInfo}${roomInfo}${instructorInfo}`,
+    });
+    
+    try {
+      // Check if the new day/slot is already occupied by another session
+      const isSlotOccupied = classCourses.some((cc) =>
+        cc.components.some((comp) =>
+          comp.sessions.some((s) => 
+            s.day === data.day && 
+            s.slot === data.slot && 
+            s.id !== data.sessionId
+          )
+        )
+      );
+      
+      if (isSlotOccupied) {
+        setAlertModal({
+          isOpen: true,
+          type: "warning",
+          title: "Time Slot Occupied",
+          message: "The selected time slot is already occupied by another session. Please choose a different slot.",
+        });
+        return;
+      }
+      
+      // Update the session via API
+      await sessionsAPI.update(data.sessionId, {
+        day: data.day,
+        slot: data.slot,
+        room: data.room,
+        instructor: data.instructor,
+      });
+      
+      // Update state locally
+      await updateClassCoursesState();
+    } catch (err: any) {
+      console.error(`[handleUpdateSession] Error:`, err);
+      setAlertModal({
+        isOpen: true,
+        type: "error",
+        title: "Failed to Update Session",
+        message: err.message || "Failed to update session. Please try again.",
+      });
+    }
+  };
+
   const handleDeleteSession = async (sessionId: number) => {
     setConfirmModal({
       isOpen: true,
@@ -708,6 +813,7 @@ export default function ClassEditorPage() {
             onAssignCourses={handleAssignCourses}
             onCreateComponents={handleCreateComponents}
             onDeleteCourse={handleDeleteCourse}
+            onToggleClosed={handleToggleClosed}
             onAlert={(type, title, message) => setAlertModal({ isOpen: true, type, title, message })}
             onConfirm={(title, message, onConfirmFn, type, confirmText, cancelText, showIcon, onCloseFn) => setConfirmModal({ isOpen: true, title, message, onConfirm: onConfirmFn, onClose: onCloseFn, type, confirmText, cancelText, showIcon })}
           />
@@ -763,19 +869,36 @@ export default function ClassEditorPage() {
                                     key={idx}
                                     initial={{ opacity: 0, scale: 0.9 }}
                                     animate={{ opacity: 1, scale: 1 }}
-                                    className={`text-xs p-2 ${getSlotColor(item.component.component_type)} rounded-lg backdrop-blur-sm border group-hover:opacity-80 transition-all relative`}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSessionClick(item);
+                                    }}
+                                    className={`text-xs p-2 ${getSlotColor(item.component.component_type)} rounded-lg backdrop-blur-sm border group-hover:opacity-80 transition-all relative cursor-pointer hover:ring-2 hover:ring-cyan-400/50`}
                                   >
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDeleteSession(item.session.id);
-                                      }}
-                                      className="absolute top-1 right-1 w-5 h-5 flex items-center justify-center bg-red-500/20 hover:bg-red-500/40 border border-red-500/50 hover:border-red-500 rounded text-red-300 hover:text-red-100 transition-all opacity-0 group-hover:opacity-100"
-                                      title="Delete session"
-                                    >
-                                      <XCircle className="w-3 h-3" />
-                                    </button>
-                                    <div className="font-semibold text-white pr-6">
+                                    {/* Action buttons */}
+                                    <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleSessionClick(item);
+                                        }}
+                                        className="w-5 h-5 flex items-center justify-center bg-cyan-500/20 hover:bg-cyan-500/40 border border-cyan-500/50 hover:border-cyan-500 rounded text-cyan-300 hover:text-cyan-100 transition-all"
+                                        title="Edit session"
+                                      >
+                                        <Edit2 className="w-3 h-3" />
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteSession(item.session.id);
+                                        }}
+                                        className="w-5 h-5 flex items-center justify-center bg-red-500/20 hover:bg-red-500/40 border border-red-500/50 hover:border-red-500 rounded text-red-300 hover:text-red-100 transition-all"
+                                        title="Delete session"
+                                      >
+                                        <XCircle className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                    <div className="font-semibold text-white pr-12">
                                       {item.course.name} ({item.component.component_type})
                                     </div>
                                     <div className="text-gray-400 text-xs mt-0.5">
@@ -813,19 +936,22 @@ export default function ClassEditorPage() {
         )}
       </div>
 
-      {/* Session Creation Modal */}
+      {/* Session Creation/Edit Modal */}
       {showSessionModal && selectedCell && (
         <CourseComponentSelectionModal
           day={selectedCell.day}
           slot={selectedCell.slot}
           classCourses={classCourses}
           allCourses={allCourses}
+          editingSession={editingSession}
           onSave={handleCreateSession}
+          onUpdate={handleUpdateSession}
           onClose={() => {
             setShowSessionModal(false);
             setSelectedCell(null);
             setSelectedCourseForSlot(null);
             setSelectedComponentType(null);
+            setEditingSession(null);
           }}
           onAlert={(type, title, message) => setAlertModal({ isOpen: true, type, title, message })}
         />
@@ -873,6 +999,7 @@ function CoursesManager({
   onAssignCourses,
   onCreateComponents,
   onDeleteCourse,
+  onToggleClosed,
   onAlert,
   onConfirm,
 }: {
@@ -882,6 +1009,7 @@ function CoursesManager({
   onAssignCourses: (courseIds: number[]) => void;
   onCreateComponents: (classCourseId: number, types: ("L" | "S" | "LB")[]) => void;
   onDeleteCourse: (classCourseId: number, courseCode: string) => void;
+  onToggleClosed: (cc: ClassCourse, nextClosed: boolean) => void;
   onAlert: (type: "success" | "error" | "warning" | "info", title: string, message: string) => void;
   onConfirm: (title: string, message: string, onConfirm: () => void, type?: "danger" | "warning" | "info", confirmText?: string, cancelText?: string, showIcon?: boolean, onClose?: () => void) => void;
 }) {
@@ -968,12 +1096,31 @@ function CoursesManager({
           >
             <div className="flex justify-between items-start mb-4">
               <div className="flex-1">
-                <h3 className="text-xl font-bold text-white group-hover:text-gradient transition-colors">
-                  {cc.course.code}
-                </h3>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-xl font-bold text-white group-hover:text-gradient transition-colors">
+                    {cc.course.code}
+                  </h3>
+                  {cc.closed && (
+                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-400 border border-amber-500/50">
+                      Closed (excluded from generation)
+                    </span>
+                  )}
+                </div>
                 <p className="text-gray-400">{cc.course.name}</p>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => onToggleClosed(cc, !cc.closed)}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${
+                    cc.closed
+                      ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 hover:bg-emerald-500/30"
+                      : "bg-amber-500/20 text-amber-400 border border-amber-500/50 hover:bg-amber-500/30"
+                  }`}
+                  title={cc.closed ? "Reopen – include in generation" : "Close – exclude from generation"}
+                >
+                  {cc.closed ? <Unlock className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                  {cc.closed ? "Reopen" : "Close"}
+                </button>
                 {cc.components.length === 0 && (
                   <button
                     onClick={() => handleCreateBundle(cc.id)}
@@ -1159,7 +1306,9 @@ function CourseComponentSelectionModal({
   slot,
   classCourses,
   allCourses,
+  editingSession,
   onSave,
+  onUpdate,
   onClose,
   onAlert,
 }: {
@@ -1167,14 +1316,28 @@ function CourseComponentSelectionModal({
   slot: number;
   classCourses: ClassCourse[];
   allCourses: Course[];
+  editingSession: { session: Session; component: Component; course: Course } | null;
   onSave: (data: { courseId: number; componentType: "L" | "S" | "LB"; day: string; slot: number; room?: string; instructor?: string }) => void;
+  onUpdate: (data: { sessionId: number; day: string; slot: number; room?: string; instructor?: string }) => void;
   onClose: () => void;
   onAlert: (type: "success" | "error" | "warning" | "info", title: string, message: string) => void;
 }) {
-  const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
-  const [selectedComponentType, setSelectedComponentType] = useState<"L" | "S" | "LB" | null>(null);
-  const [room, setRoom] = useState("");
-  const [instructor, setInstructor] = useState("");
+  const isEditMode = !!editingSession;
+  
+  const [selectedCourseId, setSelectedCourseId] = useState<number | null>(
+    editingSession ? editingSession.course.id : null
+  );
+  const [selectedComponentType, setSelectedComponentType] = useState<"L" | "S" | "LB" | null>(
+    editingSession ? editingSession.component.component_type : null
+  );
+  const [selectedDay, setSelectedDay] = useState<string>(
+    editingSession ? editingSession.session.day : day
+  );
+  const [selectedSlot, setSelectedSlot] = useState<number>(
+    editingSession ? editingSession.session.slot : slot
+  );
+  const [room, setRoom] = useState(editingSession?.session.room || "");
+  const [instructor, setInstructor] = useState(editingSession?.session.instructor || "");
   const [instructorList, setInstructorList] = useState<string[]>([]);
   const [showInstructorSuggestions, setShowInstructorSuggestions] = useState(false);
   const [filteredInstructors, setFilteredInstructors] = useState<string[]>([]);
@@ -1282,6 +1445,20 @@ function CourseComponentSelectionModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Handle update mode
+    if (isEditMode && editingSession) {
+      onUpdate({
+        sessionId: editingSession.session.id,
+        day: selectedDay,
+        slot: selectedSlot,
+        room: room || undefined,
+        instructor: instructor || undefined,
+      });
+      return;
+    }
+    
+    // Handle create mode
     if (!selectedCourseId || !selectedComponentType) {
       return;
     }
@@ -1322,42 +1499,94 @@ function CourseComponentSelectionModal({
       >
         <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
           <Calendar className="w-6 h-6 text-cyan-400" />
-          Add Session
+          {isEditMode ? "Edit Session" : "Add Session"}
         </h2>
-        <div className="mb-4 p-3 glass border border-white/10 rounded-lg">
-          <div className="text-gray-300 flex items-center gap-2">
-            <Clock className="w-4 h-4" />
-            <strong>Day:</strong> {day} | <strong>Slot:</strong> {slot}
+        
+        {/* Show course info when editing */}
+        {isEditMode && editingSession && (
+          <div className="mb-4 p-3 glass border border-cyan-500/30 rounded-lg bg-cyan-500/5">
+            <div className="text-white font-semibold flex items-center gap-2">
+              <BookOpen className="w-4 h-4 text-cyan-400" />
+              {editingSession.course.code} - {editingSession.course.name}
+            </div>
+            <div className="text-gray-400 text-sm mt-1">
+              Component: {editingSession.component.component_type === "L" ? "Lecture" : editingSession.component.component_type === "S" ? "Section" : "Lab"} ({editingSession.component.component_type})
+            </div>
           </div>
-        </div>
+        )}
+        
+        {/* Day and Slot selection - editable in edit mode, display-only in create mode */}
+        {isEditMode ? (
+          <div className="mb-4 p-3 glass border border-white/10 rounded-lg">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-gray-300 mb-2 text-sm">Day</label>
+                <select
+                  value={selectedDay}
+                  onChange={(e) => setSelectedDay(e.target.value)}
+                  className="w-full px-4 py-2 glass border border-white/10 rounded-lg text-white focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+                >
+                  {DAYS.map((d) => (
+                    <option key={d} value={d} className="bg-gray-800">
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-gray-300 mb-2 text-sm">Slot</label>
+                <select
+                  value={selectedSlot}
+                  onChange={(e) => setSelectedSlot(parseInt(e.target.value))}
+                  className="w-full px-4 py-2 glass border border-white/10 rounded-lg text-white focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+                >
+                  {SLOTS.map((s) => (
+                    <option key={s} value={s} className="bg-gray-800">
+                      Slot {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="mb-4 p-3 glass border border-white/10 rounded-lg">
+            <div className="text-gray-300 flex items-center gap-2">
+              <Clock className="w-4 h-4" />
+              <strong>Day:</strong> {day} | <strong>Slot:</strong> {slot}
+            </div>
+          </div>
+        )}
         <form onSubmit={handleSubmit}>
-          {/* Course Selection */}
-          <div className="mb-4">
-            <label className="block text-gray-300 mb-2 flex items-center gap-2">
-              <BookOpen className="w-4 h-4" />
-              Select Course (Subject)
-            </label>
-            <select
-              value={selectedCourseId || ""}
-              onChange={(e) => {
-                const courseId = parseInt(e.target.value);
-                setSelectedCourseId(courseId || null);
-                setSelectedComponentType(null); // Reset component type when course changes
-              }}
-              className="w-full px-4 py-2 glass border border-white/10 rounded-lg text-white focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition-all"
-              required
-            >
-              <option value="" className="bg-gray-800">Select a course...</option>
-              {assignedCourses.map((course) => (
-                <option key={course.id} value={course.id} className="bg-gray-800">
-                  {course.code} - {course.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Course Selection - only show in create mode */}
+          {!isEditMode && (
+            <div className="mb-4">
+              <label className="block text-gray-300 mb-2 flex items-center gap-2">
+                <BookOpen className="w-4 h-4" />
+                Select Course (Subject)
+              </label>
+              <select
+                value={selectedCourseId || ""}
+                onChange={(e) => {
+                  const courseId = parseInt(e.target.value);
+                  setSelectedCourseId(courseId || null);
+                  setSelectedComponentType(null); // Reset component type when course changes
+                }}
+                className="w-full px-4 py-2 glass border border-white/10 rounded-lg text-white focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+                required
+              >
+                <option value="" className="bg-gray-800">Select a course...</option>
+                {assignedCourses.map((course) => (
+                  <option key={course.id} value={course.id} className="bg-gray-800">
+                    {course.code} - {course.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
-          {/* Component Type Selection */}
-          {selectedCourseId && (
+          {/* Component Type Selection - only show in create mode */}
+          {!isEditMode && selectedCourseId && (
             <div className="mb-4">
               <label className="block text-gray-300 mb-2 flex items-center gap-2">
                 <BookOpen className="w-4 h-4" />
@@ -1481,10 +1710,10 @@ function CourseComponentSelectionModal({
           <div className="flex gap-4">
             <button
               type="submit"
-              disabled={!selectedCourseId || !selectedComponentType}
+              disabled={!isEditMode && (!selectedCourseId || !selectedComponentType)}
               className="flex-1 px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 disabled:bg-gray-600 text-white rounded-lg font-semibold shadow-lg shadow-cyan-500/50 hover:shadow-xl transition-all disabled:cursor-not-allowed"
             >
-              Create Session
+              {isEditMode ? "Update Session" : "Create Session"}
             </button>
             <button
               type="button"

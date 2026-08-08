@@ -23,6 +23,10 @@ export class ClassCourse {
   @Column({ type: "int" })
   course_id!: number;
 
+  /** When true, this assigned course is excluded from timetable generation until admin reopens it. */
+  @Column({ type: "boolean", default: false })
+  closed!: boolean;
+
   @ManyToOne(() => Class, (classEntity) => classEntity.classCourses)
   @JoinColumn({ name: "class_id" })
   class!: Class;

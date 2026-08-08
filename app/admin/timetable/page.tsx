@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { termsAPI } from "@/lib/api/timetable";
 import Link from "next/link";
-import { LogOut, Plus, BookOpen, Trash2, User, Zap } from "lucide-react";
+import { LogOut, Plus, BookOpen, Trash2, User, Zap, Building2, FileText, AlertCircle } from "lucide-react";
 import { useAdminAuth } from "../auth-check";
 
 interface Term {
@@ -184,6 +184,27 @@ export default function TimetableAdminPage() {
             >
               <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 group-hover:scale-110 transition-transform flex-shrink-0" />
               <span className="font-semibold text-white hidden sm:inline">Other Depts</span>
+            </Link>
+            <Link
+              href="/admin/room-schedule"
+              className="px-4 sm:px-5 md:px-6 py-2.5 sm:py-3 glass border border-white/10 rounded-lg hover:border-cyan-500/50 transition-all flex items-center gap-2 group text-sm sm:text-base min-h-[44px]"
+            >
+              <Building2 className="w-4 h-4 sm:w-5 sm:h-5 group-hover:scale-110 transition-transform flex-shrink-0" />
+              <span className="font-semibold text-white hidden sm:inline">Room Schedule</span>
+            </Link>
+            <Link
+              href="/admin/timetable/generation-logs"
+              className="px-4 sm:px-5 md:px-6 py-2.5 sm:py-3 glass border border-white/10 rounded-lg hover:border-cyan-500/50 transition-all flex items-center gap-2 group text-sm sm:text-base min-h-[44px]"
+            >
+              <FileText className="w-4 h-4 sm:w-5 sm:h-5 group-hover:scale-110 transition-transform flex-shrink-0" />
+              <span className="font-semibold text-white hidden sm:inline">Generation Logs</span>
+            </Link>
+            <Link
+              href="/admin/problems"
+              className="px-4 sm:px-5 md:px-6 py-2.5 sm:py-3 glass border border-white/10 rounded-lg hover:border-red-500/50 transition-all flex items-center gap-2 group text-sm sm:text-base min-h-[44px]"
+            >
+              <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 group-hover:scale-110 transition-transform flex-shrink-0" />
+              <span className="font-semibold text-white hidden sm:inline">Student Problems</span>
             </Link>
             <button
               onClick={() => setShowCreateModal(true)}

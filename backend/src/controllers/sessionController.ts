@@ -906,31 +906,53 @@ export const getInstructorSessions = async (req: Request, res: Response) => {
       .getMany();
 
     // Format the response with course and class information
-    const formattedSessions = sessions.map(session => ({
-      id: session.id,
-      day: session.day,
-      slot: session.slot,
-      room: session.room,
-      instructor: trimmedName, // Return the searched instructor name, not the stored comma-separated string
-      course: {
-        id: session.component.classCourse.course.id,
-        code: session.component.classCourse.course.code,
-        name: session.component.classCourse.course.name,
-        is_elective: session.component.classCourse.course.is_elective || false,
-      },
-      component: {
-        id: session.component.id,
-        component_type: session.component.component_type,
-      },
-      class: {
-        id: session.component.classCourse.class.id,
-        class_code: session.component.classCourse.class.class_code,
-      },
-      term: {
-        id: session.component.classCourse.class.term.id,
-        term_number: session.component.classCourse.class.term.term_number,
-      },
-    }));
+    // Pair rooms with instructors by index (first instructor gets first room, etc.)
+    const formattedSessions = sessions.map(session => {
+      // Find the index of the searched instructor in the comma-separated list
+      const instructors = session.instructor 
+        ? session.instructor.split(',').map((i: string) => i.trim())
+        : [];
+      const rooms = session.room 
+        ? session.room.split(',').map((r: string) => r.trim())
+        : [];
+      
+      // Find instructor index (case-insensitive)
+      const instructorIndex = instructors.findIndex(
+        (inst: string) => inst.toLowerCase() === trimmedName.toLowerCase()
+      );
+      
+      // Get the corresponding room (if it exists at the same index)
+      // If no room at that index, return null
+      const pairedRoom = instructorIndex >= 0 && instructorIndex < rooms.length 
+        ? rooms[instructorIndex] 
+        : (rooms.length > 0 ? rooms[0] : null); // Fallback to first room if index not found
+      
+      return {
+        id: session.id,
+        day: session.day,
+        slot: session.slot,
+        room: pairedRoom,
+        instructor: trimmedName, // Return the searched instructor name, not the stored comma-separated string
+        course: {
+          id: session.component.classCourse.course.id,
+          code: session.component.classCourse.course.code,
+          name: session.component.classCourse.course.name,
+          is_elective: session.component.classCourse.course.is_elective || false,
+        },
+        component: {
+          id: session.component.id,
+          component_type: session.component.component_type,
+        },
+        class: {
+          id: session.component.classCourse.class.id,
+          class_code: session.component.classCourse.class.class_code,
+        },
+        term: {
+          id: session.component.classCourse.class.term.id,
+          term_number: session.component.classCourse.class.term.term_number,
+        },
+      };
+    });
 
     return res.json({
       success: true,
@@ -1007,23 +1029,33 @@ export const getAllInstructorsWithSessions = async (req: Request, res: Response)
       const classEntity = session.component.classCourse.class;
       const term = classEntity.term;
 
-      // Split comma-separated instructor names
+      // Split comma-separated instructor names and rooms
       const instructorNames = session.instructor
         .split(',')
         .map((inst: string) => inst.trim())
         .filter((inst: string) => inst.length > 0);
       
-      // Add session to each individual instructor
-      instructorNames.forEach((instructorName: string) => {
+      const rooms = session.room 
+        ? session.room.split(',').map((r: string) => r.trim())
+        : [];
+      
+      // Add session to each individual instructor with their paired room
+      instructorNames.forEach((instructorName: string, index: number) => {
         if (!instructorSessionsMap.has(instructorName)) {
           instructorSessionsMap.set(instructorName, []);
         }
+
+        // Pair room with instructor by index (first instructor gets first room, etc.)
+        // If no room at that index, fallback to first room or null
+        const pairedRoom = index < rooms.length 
+          ? rooms[index] 
+          : (rooms.length > 0 ? rooms[0] : null);
 
         instructorSessionsMap.get(instructorName)!.push({
           id: session.id,
           day: session.day,
           slot: session.slot,
-          room: session.room,
+          room: pairedRoom,
           instructor: instructorName,
           course: {
             id: course.id,
@@ -1066,6 +1098,87 @@ export const getAllInstructorsWithSessions = async (req: Request, res: Response)
     });
   } catch (error: any) {
     console.error("Error fetching all instructors with sessions:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Server error",
+    });
+  }
+};
+
+/**
+ * Get all sessions for room schedule view (admin)
+ * Returns sessions grouped by whether they have a room assigned or not
+ */
+export const getAllSessionsForRoomSchedule = async (req: Request, res: Response) => {
+  try {
+    const sessionRepo = AppDataSource.getRepository(Session);
+    
+    // Get all sessions with full relations
+    const allSessions = await sessionRepo.find({
+      relations: [
+        "component",
+        "component.classCourse",
+        "component.classCourse.course",
+        "component.classCourse.class",
+        "component.classCourse.class.term",
+      ],
+      order: {
+        day: "ASC",
+        slot: "ASC",
+      },
+    });
+
+    // Format sessions with course and class info
+    const formattedSessions = allSessions.map(session => {
+      const course = session.component.classCourse.course;
+      const classEntity = session.component.classCourse.class;
+      const term = classEntity.term;
+
+      return {
+        id: session.id,
+        day: session.day,
+        slot: session.slot,
+        room: session.room,
+        instructor: session.instructor,
+        course: {
+          id: course.id,
+          code: course.code,
+          name: course.name,
+        },
+        component: {
+          id: session.component.id,
+          component_type: session.component.component_type,
+        },
+        class: {
+          id: classEntity.id,
+          class_code: classEntity.class_code,
+          system_type: classEntity.system_type,
+        },
+        term: {
+          id: term.id,
+          term_number: term.term_number,
+        },
+      };
+    });
+
+    // Separate into assigned and unassigned rooms
+    const assignedRooms = formattedSessions.filter(s => s.room && s.room.trim() !== "");
+    const unassignedRooms = formattedSessions.filter(s => !s.room || s.room.trim() === "");
+
+    // Generate hash for caching
+    const dataString = JSON.stringify({ assigned: assignedRooms, unassigned: unassignedRooms });
+    const hash = crypto.createHash("sha256").update(dataString).digest("hex").substring(0, 16);
+
+    return res.json({
+      success: true,
+      data: {
+        assigned: assignedRooms,
+        unassigned: unassignedRooms,
+      },
+      hash,
+    });
+  } catch (error: any) {
+    console.error("Error fetching room schedule:", error);
     return res.status(500).json({
       success: false,
       message: error.message || "Server error",

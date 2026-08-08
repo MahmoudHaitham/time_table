@@ -280,7 +280,7 @@ export default function TermTimetablePage() {
                                 className={`text-xs p-2 sm:p-2.5 ${getSlotColor(item.component.component_type)} rounded-lg backdrop-blur-sm border`}
                               >
                                 <div className="font-semibold text-white mb-1 text-xs sm:text-sm">
-                                  {item.course.code} ({item.component.component_type})
+                                  {item.course.name} ({item.component.component_type})
                                 </div>
                                 {item.session.room && (
                                   <div className="text-gray-300 text-xs flex items-center gap-1">
@@ -344,7 +344,7 @@ export default function TermTimetablePage() {
                                       className={`text-xs p-1.5 sm:p-2 ${getSlotColor(item.component.component_type)} rounded-lg backdrop-blur-sm border`}
                                     >
                                       <div className="font-semibold text-white mb-1 text-xs">
-                                        {item.course.code} ({item.component.component_type})
+                                        {item.course.name} ({item.component.component_type})
                                       </div>
                                       {item.session.room && (
                                         <div className="text-gray-300 text-xs flex items-center gap-1">

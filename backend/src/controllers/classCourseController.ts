@@ -328,3 +328,73 @@ export const deleteClassCourse = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * PATCH /class-courses/:id - Update class-course (e.g. set closed)
+ * Body: { closed: boolean } - when true, this assigned course is excluded from generation
+ */
+export const patchClassCourse = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { closed } = req.body;
+
+    if (!id || (typeof id === "string" && id.trim() === "")) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid class course ID: id parameter is missing or empty",
+      });
+    }
+
+    const parsedId = typeof id === "string" ? parseInt(id.trim(), 10) : parseInt(String(id), 10);
+    if (isNaN(parsedId) || parsedId <= 0 || !Number.isInteger(parsedId)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid class course ID: "${id}" cannot be parsed as a positive integer`,
+      });
+    }
+
+    if (typeof closed !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        message: "Body must include closed: boolean",
+      });
+    }
+
+    const classCourseRepo = AppDataSource.getRepository(ClassCourse);
+    const classCourse = await classCourseRepo.findOne({
+      where: { id: parsedId },
+    });
+
+    if (!classCourse) {
+      return res.status(404).json({
+        success: false,
+        message: "Class course assignment not found",
+      });
+    }
+
+    classCourse.closed = closed;
+    await classCourseRepo.save(classCourse);
+
+    // Invalidate elective courses cache for this term so students see updated closed/open state
+    const classRepo = AppDataSource.getRepository(Class);
+    const classEntity = await classRepo.findOne({
+      where: { id: classCourse.class_id },
+      select: ["term_id"],
+    });
+    if (classEntity?.term_id) {
+      const { invalidateElectiveCoursesForTerm } = await import("../utils/cacheInvalidation");
+      invalidateElectiveCoursesForTerm(classEntity.term_id);
+    }
+
+    return res.json({
+      success: true,
+      message: closed ? "Assigned course marked as closed (excluded from generation)." : "Assigned course reopened (included in generation).",
+      data: { id: classCourse.id, closed: classCourse.closed },
+    });
+  } catch (error: any) {
+    console.error("[patchClassCourse] Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to update class course",
+    });
+  }
+};

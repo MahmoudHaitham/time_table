@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { studentTimetableAPI } from "@/lib/api/timetable";
-import { Calendar, BookOpen, X, CheckCircle2, Trash2, ArrowLeft, User } from "lucide-react";
+import { Calendar, BookOpen, X, CheckCircle2, Trash2, ArrowLeft, User, Lock } from "lucide-react";
 
 interface Course {
   id: number;
@@ -12,6 +12,8 @@ interface Course {
   name: string;
   is_elective: boolean;
   component_types?: string;
+  /** True when this elective is closed in all classes for this term; student cannot select it. */
+  closedInAllClasses?: boolean;
 }
 
 const DAYS = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"];
@@ -34,6 +36,10 @@ export default function SystemPreferencesPage() {
   const [instructors, setInstructors] = useState<string[]>([]);
   const [selectedInstructors, setSelectedInstructors] = useState<string[]>([]);
   const [termNumber, setTermNumber] = useState<number | null>(null);
+  const [campusTrack, setCampusTrack] = useState<"northampton" | "normal" | null>(null);
+  const [showNameModal, setShowNameModal] = useState(false);
+  const [studentNameInput, setStudentNameInput] = useState("");
+  const [nameModalError, setNameModalError] = useState<string | null>(null);
 
   useEffect(() => {
     if (termToken && systemType) {
@@ -41,12 +47,18 @@ export default function SystemPreferencesPage() {
     }
   }, [termToken, systemType]);
 
-  // Load term number from sessionStorage on mount
+  // Load term number and campus track from sessionStorage on mount
   useEffect(() => {
     if (termToken) {
       const storedTermNum = sessionStorage.getItem(`term_number_${termToken}`);
       if (storedTermNum) {
         setTermNumber(parseInt(storedTermNum));
+      }
+      
+      // Load campus track for Term 4 System 140 (NORTHAMPTON separation)
+      const storedCampusTrack = sessionStorage.getItem(`campus_track_${termToken}`);
+      if (storedCampusTrack && (storedCampusTrack === "northampton" || storedCampusTrack === "normal")) {
+        setCampusTrack(storedCampusTrack);
       }
     }
   }, [termToken]);
@@ -108,7 +120,8 @@ export default function SystemPreferencesPage() {
         const instructorsRes = await studentTimetableAPI.getInstructorsForTerm(
           termToken, 
           systemType, 
-          selectedCourseIds.length > 0 ? selectedCourseIds : undefined
+          selectedCourseIds.length > 0 ? selectedCourseIds : undefined,
+          campusTrack || undefined // Pass campus track to filter instructors by NORTHAMPTON/Normal classes
         ).catch((err) => {
           console.error("Error loading instructors:", err);
           return { data: [] };
@@ -129,7 +142,7 @@ export default function SystemPreferencesPage() {
     };
     
     loadInstructorsAsync();
-  }, [coreCourses, selectedElectives, excludedCoreCourses, termToken, systemType]);
+  }, [coreCourses, selectedElectives, excludedCoreCourses, termToken, systemType, campusTrack]);
 
   const handleGenerateSchedules = async () => {
     if (!termToken || !systemType) return;
@@ -139,16 +152,67 @@ export default function SystemPreferencesPage() {
       return;
     }
 
+    // Secondary check: never send closed electives (filter out in case of stale state)
+    const allowedElectives = selectedElectives.filter(
+      (id) => !electiveCourses.some((c) => c.id === id && c.closedInAllClasses === true)
+    );
+
     // Store preferences in sessionStorage for the schedules page (using token as key)
     sessionStorage.setItem(`timetable_preferences_${termToken}`, JSON.stringify({
       excludedDays,
-      electiveCourseIds: selectedElectives.length > 0 ? selectedElectives : undefined,
+      electiveCourseIds: allowedElectives.length > 0 ? allowedElectives : undefined,
       excludedCoreCourseIds: excludedCoreCourses.length > 0 ? excludedCoreCourses : undefined,
       preferredInstructors: selectedInstructors.length > 0 ? selectedInstructors : undefined,
       systemType,
+      campusTrack: campusTrack || undefined, // Include campus track for Term 4 System 140
     }));
 
     router.push(`/student/timetable/system/${systemType}/${termToken}/schedules`);
+  };
+
+  const handleGenerateSchedulesClick = () => {
+    if (!termToken || !systemType) return;
+    if (maxElectives > 0 && selectedElectives.length > maxElectives) {
+      setError(`Maximum ${maxElectives} elective course${maxElectives > 1 ? "s" : ""} allowed`);
+      return;
+    }
+    // Secondary check: block if any selected elective is closed
+    const closedSelected = electiveCourses.filter(
+      (c) => selectedElectives.includes(c.id) && c.closedInAllClasses === true
+    );
+    if (closedSelected.length > 0) {
+      const namesList = closedSelected.map((c) => `"${c.name}" (${c.code})`).join(", ");
+      setError(
+        closedSelected.length === 1
+          ? `The elective ${namesList} is closed for this term. Please remove it and choose another.`
+          : `The following electives are closed for this term. Please remove them: ${namesList}.`
+      );
+      return;
+    }
+    setError(null);
+    setShowNameModal(true);
+    setStudentNameInput("");
+    setNameModalError(null);
+  };
+
+  const handleNameModalCancel = () => {
+    setShowNameModal(false);
+    setStudentNameInput("");
+    setNameModalError(null);
+  };
+
+  const handleNameModalConfirm = () => {
+    const name = studentNameInput.trim();
+    if (!name) {
+      setNameModalError("Please enter your name.");
+      return;
+    }
+    setNameModalError(null);
+    setShowNameModal(false);
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem(`generation_student_name_${termToken}`, name);
+    }
+    handleGenerateSchedules();
   };
 
   const toggleDay = (day: string) => {
@@ -159,7 +223,8 @@ export default function SystemPreferencesPage() {
     }
   };
 
-  const toggleElective = (courseId: number) => {
+  const toggleElective = (courseId: number, closedInAllClasses?: boolean) => {
+    if (closedInAllClasses) return; // Handled by onClick alert; should not select
     if (selectedElectives.includes(courseId)) {
       setSelectedElectives(selectedElectives.filter(id => id !== courseId));
     } else if (maxElectives > 0 && selectedElectives.length < maxElectives) {
@@ -343,35 +408,66 @@ export default function SystemPreferencesPage() {
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 md:gap-5">
-                {electiveCourses.map((course, idx) => (
-                  <motion.button
-                    key={course.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.3 + idx * 0.05 }}
-                    onClick={() => toggleElective(course.id)}
-                    disabled={!selectedElectives.includes(course.id) && maxElectives > 0 && selectedElectives.length >= maxElectives}
-                    className={`p-4 sm:p-5 md:p-6 glass border rounded-xl sm:rounded-2xl transition-all text-left min-h-[80px] sm:min-h-[100px] ${
-                      selectedElectives.includes(course.id)
-                        ? "border-purple-500 bg-gradient-to-br from-purple-500/30 to-pink-600/30 shadow-xl shadow-purple-500/30 scale-105"
-                        : "border-white/10 hover:border-purple-500/50 hover:bg-white/5 hover:scale-105"
-                    } disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100`}
-                  >
-                    <div className="flex items-start justify-between gap-2 min-w-0">
-                      <div className="flex-1 min-w-0">
-                        <div className={`font-bold text-base sm:text-lg md:text-xl mb-1 sm:mb-2 break-words ${selectedElectives.includes(course.id) ? "text-purple-100" : "text-white"}`}>
-                          {course.code}
+                {electiveCourses.map((course, idx) => {
+                  const isClosed = course.closedInAllClasses === true;
+                  return (
+                    <motion.div
+                      key={course.id}
+                      role="button"
+                      tabIndex={0}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.3 + idx * 0.05 }}
+                      onClick={() => {
+                        if (isClosed) {
+                          alert(`"${course.name}" (${course.code}) is closed for this term and cannot be selected.`);
+                          return;
+                        }
+                        toggleElective(course.id, isClosed);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          if (isClosed) {
+                            alert(`"${course.name}" (${course.code}) is closed for this term and cannot be selected.`);
+                            return;
+                          }
+                          toggleElective(course.id, isClosed);
+                        }
+                      }}
+                      className={`p-4 sm:p-5 md:p-6 glass border rounded-xl sm:rounded-2xl transition-all text-left min-h-[80px] sm:min-h-[100px] ${
+                        isClosed
+                          ? "border-gray-600 bg-gray-800/40 opacity-70 cursor-not-allowed hover:opacity-80"
+                          : selectedElectives.includes(course.id)
+                            ? "border-purple-500 bg-gradient-to-br from-purple-500/30 to-pink-600/30 shadow-xl shadow-purple-500/30 scale-105 cursor-pointer"
+                            : "border-white/10 hover:border-purple-500/50 hover:bg-white/5 hover:scale-105 cursor-pointer"
+                      } ${!isClosed && !selectedElectives.includes(course.id) && maxElectives > 0 && selectedElectives.length >= maxElectives ? "opacity-50 cursor-not-allowed hover:scale-100" : ""}`}
+                      title={isClosed ? "Closed for this term – cannot select" : undefined}
+                    >
+                      <div className="flex items-start justify-between gap-2 min-w-0">
+                        <div className="flex-1 min-w-0">
+                          <div className={`font-bold text-base sm:text-lg md:text-xl mb-1 sm:mb-2 break-words ${isClosed ? "text-gray-400" : selectedElectives.includes(course.id) ? "text-purple-100" : "text-white"}`}>
+                            {course.code}
+                          </div>
+                          <div className={`text-xs sm:text-sm break-words ${isClosed ? "text-gray-500" : selectedElectives.includes(course.id) ? "text-purple-200" : "text-gray-400"}`}>
+                            {course.name}
+                          </div>
+                          {isClosed && (
+                            <div className="mt-1.5 text-xs text-amber-400/90 font-medium flex items-center gap-1">
+                              <Lock className="w-3.5 h-3.5" /> Closed for this term
+                            </div>
+                          )}
                         </div>
-                        <div className={`text-xs sm:text-sm break-words ${selectedElectives.includes(course.id) ? "text-purple-200" : "text-gray-400"}`}>
-                          {course.name}
-                        </div>
+                        {!isClosed && selectedElectives.includes(course.id) && (
+                          <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 text-purple-300 flex-shrink-0 ml-2 sm:ml-4" />
+                        )}
+                        {isClosed && (
+                          <Lock className="w-5 h-5 sm:w-6 sm:h-6 text-gray-500 flex-shrink-0 ml-2 sm:ml-4" />
+                        )}
                       </div>
-                      {selectedElectives.includes(course.id) && (
-                        <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 text-purple-300 flex-shrink-0 ml-2 sm:ml-4" />
-                      )}
-                    </div>
-                  </motion.button>
-                ))}
+                    </motion.div>
+                  );
+                })}
               </div>
               {selectedElectives.length > 0 && (
                 <div className="mt-4 sm:mt-6 md:mt-8 pt-4 sm:pt-6 border-t border-white/10">
@@ -545,24 +641,52 @@ export default function SystemPreferencesPage() {
               </button>
             )}
             <button
-              onClick={handleGenerateSchedules}
+              onClick={handleGenerateSchedulesClick}
               disabled={loading}
               className="flex-1 px-10 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-xl font-bold text-lg shadow-2xl shadow-cyan-500/50 hover:shadow-cyan-500/70 hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-3 order-1 sm:order-3"
             >
-              {loading ? (
-                <>
-                  <div className="w-6 h-6 border-3 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Generating Schedules...
-                </>
-              ) : (
-                <>
-                  <Calendar className="w-6 h-6" />
-                  Generate Schedules
-                </>
-              )}
+              <Calendar className="w-6 h-6" />
+              Generate Schedules
             </button>
           </motion.div>
         </motion.div>
+
+        {/* Name modal before generating */}
+        {showNameModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="glass backdrop-blur-xl border border-white/10 rounded-2xl p-6 w-full max-w-md shadow-2xl"
+            >
+              <h3 className="text-xl font-bold text-white mb-2">Generate Schedules</h3>
+              <p className="text-gray-300 mb-4">Schedules will be generated now. Please enter your name.</p>
+              <input
+                type="text"
+                value={studentNameInput}
+                onChange={(e) => { setStudentNameInput(e.target.value); setNameModalError(null); }}
+                placeholder="Your name"
+                className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/20 text-white placeholder-gray-500 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 outline-none mb-2"
+                required
+              />
+              {nameModalError && <p className="text-red-400 text-sm mb-2">{nameModalError}</p>}
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={handleNameModalCancel}
+                  className="flex-1 px-4 py-2 glass border border-white/10 rounded-lg font-semibold text-white hover:border-gray-500/50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleNameModalConfirm}
+                  className="flex-1 px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-semibold shadow-lg shadow-cyan-500/50 hover:scale-[1.02] transition-all"
+                >
+                  Confirm
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
       </div>
     </div>
   );

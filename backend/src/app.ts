@@ -17,6 +17,8 @@ import sessionDirectRoutes from "./routes/sessionDirectRoutes";
 import electiveRoutes from "./routes/electiveRoutes";
 import timetableViewRoutes from "./routes/timetableViewRoutes";
 import otherDeptRoutes from "./routes/otherDeptRoutes";
+import generationLogRoutes from "./routes/generationLogRoutes";
+import studentProblemRoutes from "./routes/studentProblemRoutes";
 import { requireAuth, requireAdmin } from "./middleware/auth";
 import { validateCSRFToken, addCSRFToken } from "./middleware/csrf";
 import { rateLimiters } from "./middleware/rateLimiter";
@@ -181,6 +183,10 @@ app.use("/api/components/:componentId/sessions", requireAuth, validateCSRFToken,
 app.use("/api/sessions", requireAuth, validateCSRFToken, addCSRFToken, requireAdmin, sessionDirectRoutes);
 // Other Departments routes
 app.use("/api/other-dept", requireAuth, validateCSRFToken, addCSRFToken, requireAdmin, otherDeptRoutes);
+// Generation Logs (admin only)
+app.use("/api/generation-logs", requireAuth, validateCSRFToken, addCSRFToken, requireAdmin, generationLogRoutes);
+// Student problems: POST public (rate limited), GET admin
+app.use("/api/problems", rateLimiters.general, studentProblemRoutes);
 
 // Health check
 app.get("/", (req: Request, res: Response) => {

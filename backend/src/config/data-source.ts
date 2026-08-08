@@ -25,6 +25,8 @@ import { Session } from "../entities/Session";
 import { ElectivesAllowed } from "../entities/ElectivesAllowed";
 import { ScheduleCache } from "../entities/ScheduleCache";
 import { ScheduleTemplate } from "../entities/ScheduleTemplate";
+import { GenerationLog } from "../entities/GenerationLog";
+import { StudentProblem } from "../entities/StudentProblem";
 
 // ✅ Configure and export DataSource
 export const AppDataSource = new DataSource({
@@ -48,6 +50,8 @@ export const AppDataSource = new DataSource({
     ElectivesAllowed,
     ScheduleCache,
     ScheduleTemplate,
+    GenerationLog,
+    StudentProblem,
   ],
   extra: {
     // Connection pool settings - optimized for RAM efficiency and Neon.tech auto-scaling

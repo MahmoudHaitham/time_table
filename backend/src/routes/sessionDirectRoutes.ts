@@ -6,6 +6,7 @@ import {
   getInstructorSessions,
   getAllInstructorsSchedule,
   getAllInstructorsWithSessions,
+  getAllSessionsForRoomSchedule,
 } from "../controllers/sessionController";
 
 const router = Router();
@@ -18,6 +19,9 @@ router.get("/instructors/schedule", getAllInstructorsSchedule);
 
 // GET /api/sessions/instructors/with-sessions - Get all instructors with complete session data (optimized, cached)
 router.get("/instructors/with-sessions", getAllInstructorsWithSessions);
+
+// GET /api/sessions/room-schedule - Get all sessions for room schedule view (admin)
+router.get("/room-schedule", getAllSessionsForRoomSchedule);
 
 // GET /api/sessions/instructor/:instructorName - Get all sessions for an instructor
 router.get("/instructor/:instructorName", getInstructorSessions);

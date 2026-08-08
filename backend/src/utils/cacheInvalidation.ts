@@ -13,8 +13,19 @@ import { ScheduleCache } from "../entities/ScheduleCache";
 export const invalidateTermCache = (termId: number) => {
   cache.delete(cacheKeys.termTimetable(termId));
   cache.delete(cacheKeys.coreCourses(termId));
-  cache.delete(cacheKeys.electiveCourses(termId));
+  cache.deleteByPrefix(cacheKeys.electiveCourses(termId));
   console.log(`[Cache] Invalidated cache for term ${termId}`);
+};
+
+/**
+ * Invalidate elective courses cache for a term (all system types and student term numbers).
+ * Call when admin closes/reopens a class course so students see updated closedInAllClasses.
+ */
+export const invalidateElectiveCoursesForTerm = (termId: number) => {
+  const count = cache.deleteByPrefix(cacheKeys.electiveCourses(termId));
+  if (count > 0) {
+    console.log(`[Cache] Invalidated ${count} elective course cache(s) for term ${termId}`);
+  }
 };
 
 /**

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Calendar, BookOpen, Clock, MapPin, User, ArrowLeft, X, Download } from "lucide-react";
+import { Calendar, BookOpen, Clock, MapPin, User, Download, Users, ArrowLeft, X } from "lucide-react";
 import jsPDF from "jspdf";
 
 interface Course {
@@ -102,20 +102,7 @@ export default function OtherSectionSchedulesPage() {
         // Lab - Purple
         return "bg-gradient-to-br from-purple-500/20 to-purple-600/20 border-purple-500/50";
       default:
-        return "bg-gradient-to-br from-gray-500/20 to-gray-600/20 border-gray-500/50";
-    }
-  };
-
-  const getComponentTypeLabel = (componentType: string) => {
-    switch (componentType) {
-      case "L":
-        return "Lecture";
-      case "S":
-        return "Section";
-      case "LB":
-        return "Lab";
-      default:
-        return componentType;
+        return "bg-gradient-to-br from-red-500/20 to-red-600/20 border-red-500/50";
     }
   };
 
@@ -183,14 +170,23 @@ export default function OtherSectionSchedulesPage() {
     doc.setLineWidth(0.5); // Thin, soft border
     doc.roundedRect(x, y, width, height, radius, radius, "D");
 
-    // Text
+    // Text - course name bold and larger, instructor slightly larger (match system)
     doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
     let textY = y + 5;
     text.forEach((line, idx) => {
-      doc.setFontSize(idx === 0 ? 8 : 7);
-      doc.setFont("helvetica", idx === 0 ? "bold" : "normal");
+      if (idx === 0) {
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        textY += 1;
+      } else if (line.startsWith("Room:")) {
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "normal");
+      } else {
+        doc.setFontSize(7.5);
+        doc.setFont("helvetica", "normal");
+      }
       doc.text(line, x + 2, textY, { maxWidth: width - 4 });
-      textY += idx === 0 ? 5 : 4;
+      textY += idx === 0 ? 6 : 4;
     });
   };
 
@@ -217,12 +213,12 @@ export default function OtherSectionSchedulesPage() {
       doc.setFillColor(3, 7, 18);
       doc.rect(0, 0, pageWidth, pageHeight, "F");
 
-      // Neon purple header with gradient effect
+      // Blood red header with gradient effect
       for (let i = 0; i < 30; i++) {
         const ratio = i / 30;
-        const r = Math.floor(168 - ratio * 20);
-        const g = Math.floor(85 - ratio * 10);
-        const b = Math.floor(247 - ratio * 30);
+        const r = Math.floor(139 - ratio * 39);
+        const g = 0;
+        const b = 0;
         doc.setFillColor(r, g, b);
         doc.rect(0, i, pageWidth, 1, "F");
       }
@@ -234,7 +230,7 @@ export default function OtherSectionSchedulesPage() {
       
       doc.setFontSize(12);
       doc.setFont("helvetica", "normal");
-      doc.text("Other Departments Section", margin, 22);
+      doc.text("Other Section", margin, 22);
       
       doc.setTextColor(200, 200, 200);
       doc.setFontSize(10);
@@ -242,13 +238,13 @@ export default function OtherSectionSchedulesPage() {
 
       let yPos = 35;
 
-      // Neon table header
-      doc.setFillColor(15, 23, 42);
+      // Soft table header - blood red
+      doc.setFillColor(50, 0, 0);
       doc.rect(margin, yPos, tableWidth, headerHeight, "F");
       
-      // Purple accent line
-      doc.setFillColor(168, 85, 247);
-      doc.rect(margin, yPos, 2, headerHeight, "F");
+      // Accent line - blood red
+      doc.setFillColor(139, 0, 0);
+      doc.rect(margin, yPos, 1.5, headerHeight, "F");
       
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(11);
@@ -268,16 +264,13 @@ export default function OtherSectionSchedulesPage() {
         // Check if we need a new page
         if (yPos + rowHeight > pageHeight - margin) {
           doc.addPage();
-          yPos = margin;
-          
-          // Repeat header on new page
           doc.setFillColor(3, 7, 18);
           doc.rect(0, 0, pageWidth, pageHeight, "F");
           yPos = margin;
           
-          doc.setFillColor(15, 23, 42);
+          doc.setFillColor(50, 0, 0);
           doc.rect(margin, yPos, tableWidth, headerHeight, "F");
-          doc.setFillColor(168, 85, 247);
+          doc.setFillColor(139, 0, 0);
           doc.rect(margin, yPos, 2, headerHeight, "F");
           doc.setTextColor(255, 255, 255);
           doc.setFontSize(11);
@@ -291,17 +284,18 @@ export default function OtherSectionSchedulesPage() {
           yPos += headerHeight;
         }
 
-        // Day cell - dark with neon accent
+        // Day cell - soft, embedded style
         const isExcluded = excludedDays.includes(day);
         doc.setFillColor(isExcluded ? 30 : 15, isExcluded ? 10 : 23, isExcluded ? 10 : 42);
         doc.rect(margin, yPos, cellWidth, rowHeight, "F");
         
+        // Accent line - blood red (excluded stays error red)
         if (isExcluded) {
           doc.setFillColor(239, 68, 68);
-          doc.rect(margin, yPos, 2, rowHeight, "F");
+          doc.rect(margin, yPos, 1.5, rowHeight, "F");
         } else {
-          doc.setFillColor(168, 85, 247);
-          doc.rect(margin, yPos, 2, rowHeight, "F");
+          doc.setFillColor(139, 0, 0);
+          doc.rect(margin, yPos, 1.5, rowHeight, "F");
         }
         
         doc.setTextColor(255, 255, 255);
@@ -309,7 +303,7 @@ export default function OtherSectionSchedulesPage() {
         doc.setFont("helvetica", "bold");
         doc.text(day, margin + 4, yPos + 12);
 
-        // Slot cells
+        // Slot cells with neon styling
         SLOTS.forEach((slot, slotIdx) => {
           const session = schedule.sessions.find(s => s.day === day && s.slot === slot);
           const xPos = margin + cellWidth + (slotIdx * cellWidth);
@@ -345,16 +339,19 @@ export default function OtherSectionSchedulesPage() {
         yPos += rowHeight;
       });
 
-      // Courses & Classes Registration section
+      // Courses & Classes Registration section (same as system: blood red header, dark blue cards, blood red borders)
       if (schedule.courses && schedule.courses.length > 0) {
         yPos += 10;
         
         if (yPos + 40 > pageHeight - margin) {
           doc.addPage();
+          doc.setFillColor(3, 7, 18);
+          doc.rect(0, 0, pageWidth, pageHeight, "F");
           yPos = margin;
         }
 
-        doc.setFillColor(168, 85, 247);
+        // Blood red section header
+        doc.setFillColor(139, 0, 0);
         doc.rect(margin, yPos, tableWidth, 12, "F");
         doc.setTextColor(255, 255, 255);
         doc.setFontSize(12);
@@ -363,7 +360,7 @@ export default function OtherSectionSchedulesPage() {
 
         yPos += 15;
 
-        schedule.courses.forEach((courseData: any, idx: number) => {
+        schedule.courses.forEach((courseData: any) => {
           if (yPos + 20 > pageHeight - margin) {
             doc.addPage();
             doc.setFillColor(3, 7, 18);
@@ -371,18 +368,16 @@ export default function OtherSectionSchedulesPage() {
             yPos = margin;
           }
 
-          // Dark card with neon border
+          // Soft card - blood red border/accent (same as system)
           doc.setFillColor(15, 23, 42);
           doc.roundedRect(margin, yPos, tableWidth, 18, 2, 2, "F");
           
-          // Purple neon border
-          doc.setDrawColor(168, 85, 247);
-          doc.setLineWidth(1);
+          doc.setDrawColor(139, 0, 0);
+          doc.setLineWidth(0.5);
           doc.roundedRect(margin, yPos, tableWidth, 18, 2, 2, "D");
           
-          // Purple accent line
-          doc.setFillColor(168, 85, 247);
-          doc.rect(margin, yPos, 2, 18, "F");
+          doc.setFillColor(139, 0, 0);
+          doc.rect(margin, yPos, 1.5, 18, "F");
 
           doc.setTextColor(255, 255, 255);
           doc.setFontSize(10);
@@ -392,18 +387,18 @@ export default function OtherSectionSchedulesPage() {
           doc.setFontSize(8);
           doc.setFont("helvetica", "normal");
           doc.setTextColor(200, 200, 200);
-          doc.text(courseData.course.name, margin + 4, yPos + 12);
+          doc.text(courseData.course.name, margin + 4, yPos + 12, { maxWidth: tableWidth - 8 });
 
           doc.setFontSize(8);
           doc.setFont("helvetica", "bold");
-          doc.setTextColor(168, 85, 247);
+          doc.setTextColor(139, 0, 0);
           doc.text(`Class: ${courseData.class.class_code}`, margin + 4, yPos + 17);
 
           yPos += 20;
         });
       }
 
-      // Footer on all pages - dark with subtle text
+      // Footer - dark with subtle text (match system with designer credit)
       const totalPages = doc.getNumberOfPages();
       for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);
@@ -415,9 +410,13 @@ export default function OtherSectionSchedulesPage() {
           pageHeight - 5,
           { align: "right" }
         );
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(139, 0, 0);
+        doc.text("DESIGNED BY MAHMOUD HAISAM", margin, pageHeight - 5, { align: "left" });
       }
 
-      doc.save(`Schedule_Option_${scheduleIndex + 1}_Other_Departments.pdf`);
+      doc.save(`Schedule_Option_${scheduleIndex + 1}_Other_Section.pdf`);
     } catch (error) {
       console.error("Error generating PDF:", error);
       setError("Failed to generate PDF. Please try again.");
@@ -454,9 +453,19 @@ export default function OtherSectionSchedulesPage() {
 
         let yPos = margin;
 
-        // Header for this schedule
-        doc.setFillColor(168, 85, 247); // Purple
-        doc.rect(0, 0, pageWidth, 30, "F");
+        // Dark background for entire page
+        doc.setFillColor(3, 7, 18);
+        doc.rect(0, 0, pageWidth, pageHeight, "F");
+
+        // Blood red header with gradient effect (same as single schedule)
+        for (let i = 0; i < 30; i++) {
+          const ratio = i / 30;
+          const r = Math.floor(139 - ratio * 39);
+          const g = 0;
+          const b = 0;
+          doc.setFillColor(r, g, b);
+          doc.rect(0, i, pageWidth, 1, "F");
+        }
         
         doc.setTextColor(255, 255, 255);
         doc.setFontSize(20);
@@ -465,7 +474,7 @@ export default function OtherSectionSchedulesPage() {
         
         doc.setFontSize(12);
         doc.setFont("helvetica", "normal");
-        doc.text("Other Departments Section", margin, 22);
+        doc.text("Other Section", margin, 22);
         
         doc.setTextColor(200, 200, 200);
         doc.setFontSize(10);
@@ -473,12 +482,11 @@ export default function OtherSectionSchedulesPage() {
 
         yPos = 35;
 
-        // Soft table header matching site
-        doc.setFillColor(15, 23, 42);
+        // Table header - blood red
+        doc.setFillColor(50, 0, 0);
         doc.rect(margin, yPos, tableWidth, headerHeight, "F");
         
-        // Subtle accent line (softer, thinner)
-        doc.setFillColor(168, 85, 247);
+        doc.setFillColor(139, 0, 0);
         doc.rect(margin, yPos, 1.5, headerHeight, "F");
         
         doc.setTextColor(255, 255, 255);
@@ -496,18 +504,19 @@ export default function OtherSectionSchedulesPage() {
 
         // Table rows
         DAYS.forEach((day) => {
-          // Check if we need a new page
           if (yPos + rowHeight > pageHeight - margin) {
             doc.addPage();
+            doc.setFillColor(3, 7, 18);
+            doc.rect(0, 0, pageWidth, pageHeight, "F");
             yPos = margin;
-            
-            // Repeat header on new page
-            doc.setFillColor(30, 30, 30);
+            doc.setFillColor(50, 0, 0);
             doc.rect(margin, yPos, tableWidth, headerHeight, "F");
+            doc.setFillColor(139, 0, 0);
+            doc.rect(margin, yPos, 2, headerHeight, "F");
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(11);
             doc.setFont("helvetica", "bold");
-            doc.text("Day / Slot", margin + 2, yPos + 10);
+            doc.text("Day / Slot", margin + 4, yPos + 10);
             SLOTS.forEach((slot, idx) => {
               doc.text(`Slot ${slot}`, margin + cellWidth + (idx * cellWidth) + (cellWidth / 2), yPos + 10, {
                 align: "center",
@@ -516,7 +525,7 @@ export default function OtherSectionSchedulesPage() {
             yPos += headerHeight;
           }
 
-          // Day cell - dark with neon accent
+          // Day cell - blood red accent
           const isExcluded = excludedDays.includes(day);
           doc.setFillColor(isExcluded ? 30 : 15, isExcluded ? 10 : 23, isExcluded ? 10 : 42);
           doc.rect(margin, yPos, cellWidth, rowHeight, "F");
@@ -525,7 +534,7 @@ export default function OtherSectionSchedulesPage() {
             doc.setFillColor(239, 68, 68);
             doc.rect(margin, yPos, 2, rowHeight, "F");
           } else {
-            doc.setFillColor(168, 85, 247);
+            doc.setFillColor(139, 0, 0);
             doc.rect(margin, yPos, 2, rowHeight, "F");
           }
           
@@ -570,16 +579,19 @@ export default function OtherSectionSchedulesPage() {
           yPos += rowHeight;
         });
 
-        // Courses & Classes Registration section
+        // Courses & Classes Registration section (same as system: blood red header, dark blue cards, blood red borders)
         if (schedule.courses && schedule.courses.length > 0) {
           yPos += 10;
           
           if (yPos + 40 > pageHeight - margin) {
             doc.addPage();
+            doc.setFillColor(3, 7, 18);
+            doc.rect(0, 0, pageWidth, pageHeight, "F");
             yPos = margin;
           }
 
-          doc.setFillColor(168, 85, 247);
+          // Blood red section header
+          doc.setFillColor(139, 0, 0);
           doc.rect(margin, yPos, tableWidth, 12, "F");
           doc.setTextColor(255, 255, 255);
           doc.setFontSize(12);
@@ -596,17 +608,13 @@ export default function OtherSectionSchedulesPage() {
               yPos = margin;
             }
 
-            // Soft card matching site (embedded, not outlined)
+            // Soft card - blood red border/accent (same as system)
             doc.setFillColor(15, 23, 42);
             doc.roundedRect(margin, yPos, tableWidth, 18, 2, 2, "F");
-            
-            // Subtle border (softer, thinner)
-            doc.setDrawColor(168, 85, 247);
+            doc.setDrawColor(139, 0, 0);
             doc.setLineWidth(0.5);
             doc.roundedRect(margin, yPos, tableWidth, 18, 2, 2, "D");
-            
-            // Subtle accent line (thinner)
-            doc.setFillColor(168, 85, 247);
+            doc.setFillColor(139, 0, 0);
             doc.rect(margin, yPos, 1.5, 18, "F");
 
             doc.setTextColor(255, 255, 255);
@@ -617,11 +625,11 @@ export default function OtherSectionSchedulesPage() {
             doc.setFontSize(8);
             doc.setFont("helvetica", "normal");
             doc.setTextColor(200, 200, 200);
-            doc.text(courseData.course.name, margin + 4, yPos + 12);
+            doc.text(courseData.course.name, margin + 4, yPos + 12, { maxWidth: tableWidth - 8 });
 
             doc.setFontSize(8);
             doc.setFont("helvetica", "bold");
-            doc.setTextColor(168, 85, 247);
+            doc.setTextColor(139, 0, 0);
             doc.text(`Class: ${courseData.class.class_code}`, margin + 4, yPos + 17);
 
             yPos += 20;
@@ -629,21 +637,19 @@ export default function OtherSectionSchedulesPage() {
         }
       });
 
-      // Footer on all pages - dark with subtle text
       const totalPages = doc.getNumberOfPages();
       for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);
         doc.setFontSize(8);
         doc.setTextColor(100, 100, 120);
-        doc.text(
-          `Page ${i} of ${totalPages}`,
-          pageWidth - margin,
-          pageHeight - 5,
-          { align: "right" }
-        );
+        doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin, pageHeight - 5, { align: "right" });
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(139, 0, 0);
+        doc.text("DESIGNED BY MAHMOUD HAISAM", margin, pageHeight - 5, { align: "left" });
       }
 
-      doc.save(`All_Schedules_Other_Departments.pdf`);
+      doc.save(`All_Schedules_Other_Section.pdf`);
     } catch (error) {
       console.error("Error generating PDF:", error);
       setError("Failed to generate PDF. Please try again.");
@@ -652,48 +658,79 @@ export default function OtherSectionSchedulesPage() {
     }
   };
 
-  const totalPages = Math.ceil(schedules.length / schedulesPerPage);
-  const startIndex = (currentPage - 1) * schedulesPerPage;
-  const endIndex = startIndex + schedulesPerPage;
-  const currentSchedules = schedules.slice(startIndex, endIndex);
+  const getCellContent = (schedule: Schedule, day: string, slot: number) => {
+    const session = schedule.sessions.find(
+      s => s.day === day && s.slot === slot
+    );
+
+    if (!session) return null;
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className={`text-xs sm:text-sm p-2 sm:p-2.5 ${getSlotColor(session.component_type)} rounded-lg backdrop-blur-sm border min-h-[60px] sm:min-h-[80px] flex flex-col justify-start`}
+      >
+        <div className="font-semibold text-white mb-1 break-words leading-tight">
+          {session.course.name} ({session.component_type})
+        </div>
+        {session.room && (
+          <div className="text-gray-300 text-xs flex items-start gap-1 mb-1">
+            <MapPin className="w-3 h-3 flex-shrink-0 mt-0.5" />
+            <span className="break-words">{session.room}</span>
+          </div>
+        )}
+        {session.instructor && (
+          <div className="text-gray-400 text-xs flex items-start gap-1 mt-auto">
+            <User className="w-3 h-3 flex-shrink-0 mt-0.5" />
+            <span className="break-words">{session.instructor}</span>
+          </div>
+        )}
+      </motion.div>
+    );
+  };
 
   if (loading) {
     return (
-      <div className="min-h-screen p-4 sm:p-6 md:p-8 lg:p-12 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-10 h-10 sm:w-12 sm:h-12 border-3 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-400 text-sm sm:text-base md:text-lg break-words">Loading schedules...</p>
-        </div>
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="text-center"
+        >
+          <div className="w-12 h-12 sm:w-16 sm:h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-white text-base sm:text-lg md:text-xl break-words">Generating schedules...</p>
+        </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen p-3 sm:p-4 md:p-6 lg:p-8 xl:p-12">
+    <div className="min-h-screen p-3 sm:p-4 md:p-6 lg:p-8">
       <div className="w-full max-w-screen-2xl mx-auto">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-6 sm:mb-8 md:mb-12"
+          className="mb-4 sm:mb-6"
         >
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 md:gap-6">
-            <button
-              onClick={() => router.push("/student/timetable/other")}
-              className="p-2 sm:p-3 glass border border-white/10 rounded-xl hover:border-purple-500/50 hover:bg-white/5 transition-all flex-shrink-0"
-              aria-label="Go back"
-            >
-              <ArrowLeft className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-            </button>
-            <div className="p-3 sm:p-4 md:p-5 bg-gradient-to-br from-purple-500/30 to-pink-600/30 rounded-xl sm:rounded-2xl shadow-lg shadow-purple-500/20 flex-shrink-0">
-              <Calendar className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 text-purple-400" />
+          <button
+            onClick={() => router.push("/student/timetable/other")}
+            className="flex items-center gap-2 text-cyan-400 hover:text-cyan-300 mb-3 sm:mb-4 transition-colors group text-sm sm:text-base"
+          >
+            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 group-hover:-translate-x-1 transition-transform flex-shrink-0" />
+            <span className="break-words">Back to Preferences</span>
+          </button>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+            <div className="p-2 sm:p-2.5 bg-gradient-to-br from-cyan-500/30 to-blue-600/30 rounded-xl shadow-lg shadow-cyan-500/20 flex-shrink-0">
+              <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-400" />
             </div>
             <div className="min-w-0 flex-1">
-              <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold mb-2 sm:mb-3 break-words leading-tight">
-                Generated <span className="text-gradient">Schedules</span>
+              <h1 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-bold mb-1 break-words leading-tight">
+                Generated Schedules - Other Section
               </h1>
-              <p className="text-gray-400 text-sm sm:text-base md:text-lg break-words">
-                {schedules.length} schedule{schedules.length !== 1 ? "s" : ""} found
+              <p className="text-gray-400 text-xs sm:text-sm break-words">
+                Found <span className="text-cyan-400 font-bold">{schedules.length}</span> schedule{schedules.length !== 1 ? 's' : ''} matching your preferences
               </p>
             </div>
           </div>
@@ -703,21 +740,34 @@ export default function OtherSectionSchedulesPage() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="mb-6 p-4 bg-red-500/20 border border-red-500 rounded-lg text-red-200"
+            className="mb-4 sm:mb-6 p-3 sm:p-4 bg-red-500/20 border border-red-500 rounded-lg text-red-200 text-sm sm:text-base break-words"
           >
             {error}
           </motion.div>
         )}
 
-        {schedules.length === 0 && !error && (
+        {schedules.length === 0 && !loading && (
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="mb-6 p-8 glass border border-white/10 rounded-2xl text-center"
+            className="glass border border-white/10 rounded-xl p-6 sm:p-8 md:p-12 text-center shadow-xl"
           >
-            <Calendar className="w-16 h-16 mx-auto mb-4 text-gray-400 opacity-50" />
-            <p className="text-xl font-semibold text-white mb-2">No schedules found</p>
-            <p className="text-gray-400">Please go back and try different course selections or excluded days.</p>
+            <div className="p-3 sm:p-4 bg-gray-500/20 rounded-xl w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 flex items-center justify-center">
+              <Calendar className="w-8 h-8 sm:w-10 sm:h-10 text-gray-400 opacity-50" />
+            </div>
+            <h3 className="text-lg sm:text-xl font-bold text-white mb-2 break-words">No Schedules Found</h3>
+            <p className="text-gray-400 mb-2 text-sm sm:text-base break-words">
+              No schedules found matching your preferences.
+            </p>
+            <p className="text-gray-500 text-xs sm:text-sm break-words">
+              Try adjusting your excluded days or elective courses.
+            </p>
+            <button
+              onClick={() => router.push("/student/timetable/other")}
+              className="mt-4 sm:mt-6 px-4 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-semibold hover:scale-105 transition-all text-sm sm:text-base min-h-[44px]"
+            >
+              Go Back to Preferences
+            </button>
           </motion.div>
         )}
 
@@ -750,214 +800,257 @@ export default function OtherSectionSchedulesPage() {
           </motion.div>
         )}
 
-        {/* Schedules List */}
-        {currentSchedules.map((schedule, scheduleIdx) => {
-          const globalIdx = startIndex + scheduleIdx;
-          const isPerfect = schedule.excludedDaysUsed === 0;
-          const isExcellent = isPerfect && schedule.totalDays <= 3 && schedule.gaps <= 2;
-
-          return (
-            <motion.div
-              key={globalIdx}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: scheduleIdx * 0.1 }}
-              className="mb-10 glass border border-white/10 rounded-2xl p-8 sm:p-10 shadow-xl"
-            >
-              {/* Schedule Header */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
-                <div>
-                  <h2 className="text-3xl font-bold text-white mb-2">
-                    Schedule {globalIdx + 1}
-                    {isExcellent && (
-                      <span className="ml-3 text-sm bg-gradient-to-r from-yellow-400 to-orange-500 text-black px-3 py-1 rounded-full font-bold">
-                        ⭐ EXCELLENT
-                      </span>
-                    )}
-                    {isPerfect && !isExcellent && (
-                      <span className="ml-3 text-sm bg-gradient-to-r from-green-400 to-emerald-500 text-black px-3 py-1 rounded-full font-bold">
-                        ✓ PERFECT
-                      </span>
-                    )}
-                  </h2>
-                  <div className="flex flex-wrap gap-4 text-sm text-gray-400">
-                    <span className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4" />
-                      {schedule.totalDays} day{schedule.totalDays !== 1 ? "s" : ""}
-                    </span>
-                    <span className="flex items-center gap-2">
-                      <Clock className="w-4 h-4" />
-                      {schedule.gaps} gap{schedule.gaps !== 1 ? "s" : ""}
-                    </span>
-                    {schedule.excludedDaysUsed > 0 && (
-                      <span className="flex items-center gap-2 text-red-400">
-                        <X className="w-4 h-4" />
-                        {schedule.excludedDaysUsed} excluded day{schedule.excludedDaysUsed !== 1 ? "s" : ""}
-                      </span>
-                    )}
-                  </div>
-                </div>
+        {/* Pagination */}
+        {schedules.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="glass border border-white/10 rounded-xl p-3 sm:p-4 md:p-5 mb-4 sm:mb-6"
+          >
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+              <div className="text-white text-xs sm:text-sm md:text-base break-words min-w-0">
+                <span className="font-bold">
+                  Showing {((currentPage - 1) * schedulesPerPage) + 1} - {Math.min(currentPage * schedulesPerPage, schedules.length)}
+                </span>
+                <span className="text-gray-400"> of {schedules.length} schedules</span>
+                <span className="text-gray-500 text-xs sm:text-sm block sm:inline sm:ml-2 mt-1 sm:mt-0">(Sorted by quality: best first)</span>
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
                 <button
-                  onClick={() => handleDownloadPDF(schedule, globalIdx)}
-                  disabled={downloadingPDF === globalIdx || downloadingPDF === "all" || loading}
-                  className="px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-lg font-semibold shadow-lg shadow-purple-500/50 hover:shadow-xl hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center gap-2"
-                  title="Download this schedule as PDF"
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="flex-1 sm:flex-none px-3 sm:px-4 py-2 glass border border-white/10 rounded-lg text-white hover:border-cyan-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-xs sm:text-sm min-h-[44px] sm:min-h-auto"
                 >
-                  {downloadingPDF === globalIdx ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Generating...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4" />
-                      Download PDF
-                    </>
-                  )}
+                  Previous
+                </button>
+                <span className="px-3 sm:px-4 py-2 text-white font-bold min-w-[80px] sm:min-w-[100px] text-center bg-white/5 rounded-lg text-xs sm:text-sm">
+                  Page {currentPage} of {Math.ceil(schedules.length / schedulesPerPage)}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(Math.ceil(schedules.length / schedulesPerPage), prev + 1))}
+                  disabled={currentPage >= Math.ceil(schedules.length / schedulesPerPage)}
+                  className="flex-1 sm:flex-none px-3 sm:px-4 py-2 glass border border-white/10 rounded-lg text-white hover:border-cyan-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-xs sm:text-sm min-h-[44px] sm:min-h-auto"
+                >
+                  Next
                 </button>
               </div>
+            </div>
+          </motion.div>
+        )}
 
-              {/* Timetable Grid */}
-              <div className="overflow-x-auto mb-6">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="p-3 text-left text-gray-400 font-semibold border-b border-white/10">Day / Slot</th>
-                      {SLOTS.map((slot) => (
-                        <th key={slot} className="p-3 text-center text-white font-semibold border-b border-white/10">
-                          {slot}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {DAYS.map((day, dayIndex) => (
-                      <tr
-                        key={day}
-                        className={`border-t border-white/10 ${
-                          excludedDays.includes(day) ? "bg-red-500/10" : ""
-                        }`}
-                      >
-                        <td
-                          className={`p-4 text-white font-semibold ${
-                            excludedDays.includes(day) ? "text-red-400" : ""
-                          }`}
-                        >
-                          {day}
-                        </td>
-                        {SLOTS.map((slot) => {
-                          const session = schedule.sessions.find(
-                            (s) => s.day === day && s.slot === slot
-                          );
-                          return (
-                            <td
-                              key={slot}
-                              className="p-2 min-w-[200px] h-24 border border-white/10"
-                            >
-                              {session ? (
-                                <div
-                                  className={`p-3 rounded-lg border text-white ${getSlotColor(
-                                    session.component_type
-                                  )}`}
-                                >
-                                  <div className="font-bold text-sm mb-1">
-                                    {session.course.code}
-                                  </div>
-                                  <div className="text-xs opacity-90 mb-1">
-                                    {getComponentTypeLabel(session.component_type)}
-                                  </div>
-                                  {session.room && (
-                                    <div className="text-xs opacity-75 flex items-center gap-1">
-                                      <MapPin className="w-3 h-3" />
-                                      {session.room}
-                                    </div>
-                                  )}
-                                  {session.instructor && (
-                                    <div className="text-xs opacity-75 flex items-center gap-1 mt-1">
-                                      <User className="w-3 h-3" />
-                                      {session.instructor}
-                                    </div>
-                                  )}
-                                  <div className="text-xs opacity-60 mt-1">
-                                    {session.class.class_code}
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="text-gray-600 text-xs text-center pt-4">-</div>
-                              )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Courses List */}
-              <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-white/10">
-                <h3 className="text-base sm:text-lg md:text-xl font-bold text-white mb-3 sm:mb-4 break-words">Courses in this schedule</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 md:gap-4">
-                  {schedule.courses.map((courseData, idx) => (
-                    <div
-                      key={idx}
-                      className="p-3 sm:p-4 glass border border-white/10 rounded-lg sm:rounded-xl"
-                    >
-                      <div className="flex items-start justify-between gap-2 min-w-0">
-                        <div className="flex-1 min-w-0">
-                          <div className="font-bold text-white mb-1 flex flex-wrap items-center gap-1 sm:gap-2">
-                            <span className="break-words">{courseData.course.code}</span>
-                            {courseData.course.is_elective && (
-                              <span className="text-xs bg-purple-500/30 text-purple-300 px-1.5 sm:px-2 py-0.5 rounded whitespace-nowrap">
-                                Elective
-                              </span>
-                            )}
+        {/* Schedules */}
+        {schedules
+          .slice((currentPage - 1) * schedulesPerPage, currentPage * schedulesPerPage)
+          .map((schedule, index) => {
+            const globalIndex = (currentPage - 1) * schedulesPerPage + index;
+            return (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.1 }}
+                className="glass border border-white/10 rounded-xl p-3 sm:p-4 md:p-6 overflow-hidden mb-4 sm:mb-6"
+              >
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
+                  <div className="flex items-start sm:items-center gap-2 sm:gap-4 min-w-0 flex-1">
+                    <div className="p-1.5 sm:p-2 bg-cyan-500/20 rounded-lg flex-shrink-0">
+                      <Clock className="w-4 h-4 sm:w-5 sm:h-6 text-cyan-400" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-white mb-2 flex flex-wrap items-center gap-2 break-words">
+                        <span>Schedule Option {globalIndex + 1}</span>
+                        {globalIndex === 0 && (
+                          <span className="text-xs sm:text-sm text-cyan-400 font-normal whitespace-nowrap">⭐ Best</span>
+                        )}
+                        {schedule.excludedDaysUsed === 0 && schedule.totalDays <= 3 && schedule.gaps <= 2 && (
+                          <span className="text-xs sm:text-sm text-green-400 font-normal whitespace-nowrap">✨ Excellent</span>
+                        )}
+                      </h2>
+                      <div className="flex flex-wrap gap-2 sm:gap-4 text-xs sm:text-sm text-gray-400">
+                        <div className="flex items-center gap-1 whitespace-nowrap">
+                          <Calendar className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                          <span>{schedule.totalDays} day(s) per week</span>
+                        </div>
+                        {schedule.excludedDaysUsed > 0 && (
+                          <div className="flex items-center gap-1 text-yellow-400 whitespace-nowrap">
+                            <X className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                            <span>{schedule.excludedDaysUsed} excluded day(s) used</span>
                           </div>
-                          <div className="text-xs sm:text-sm text-gray-300 mb-1 sm:mb-2 break-words">
-                            {courseData.course.name}
-                          </div>
-                          <div className="text-xs text-gray-400 break-words">
-                            Class: {courseData.class.class_code}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            {courseData.sessions.length} session{courseData.sessions.length !== 1 ? "s" : ""}
-                          </div>
+                        )}
+                        <div className="flex items-center gap-1 whitespace-nowrap">
+                          <Clock className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                          <span>{schedule.gaps} gap(s)</span>
                         </div>
                       </div>
                     </div>
-                  ))}
+                  </div>
+                  <button
+                    onClick={() => handleDownloadPDF(schedule, globalIndex)}
+                    disabled={downloadingPDF === globalIndex || downloadingPDF === "all" || loading}
+                    className="w-full sm:w-auto px-3 sm:px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-semibold shadow-lg shadow-cyan-500/50 hover:shadow-xl hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2 text-sm sm:text-base min-h-[44px]"
+                    title="Download this schedule as PDF"
+                  >
+                    {downloadingPDF === globalIndex ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin flex-shrink-0"></div>
+                        <span>Generating...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4 flex-shrink-0" />
+                        <span className="whitespace-nowrap">Download PDF</span>
+                      </>
+                    )}
+                  </button>
                 </div>
-              </div>
-            </motion.div>
-          );
-        })}
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 mt-6 sm:mt-8 md:mt-10"
-          >
-            <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 glass border border-white/10 rounded-xl font-semibold text-white hover:border-purple-500/50 hover:bg-white/5 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base min-h-[44px]"
-            >
-              Previous
-            </button>
-            <span className="text-gray-400 text-sm sm:text-base whitespace-nowrap">
-              Page {currentPage} of {totalPages}
-            </span>
-            <button
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 glass border border-white/10 rounded-xl font-semibold text-white hover:border-purple-500/50 hover:bg-white/5 transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base min-h-[44px]"
-            >
-              Next
-            </button>
-          </motion.div>
-        )}
+                {/* Timetable Grid - Mobile: Day sections, Desktop: Table */}
+                <div className="block md:hidden mb-4 sm:mb-6 space-y-4">
+                  {DAYS.map((day, dayIndex) => {
+                    const isExcluded = excludedDays.includes(day);
+                    return (
+                      <motion.div
+                        key={day}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: (index * 0.1) + (dayIndex * 0.02) }}
+                        className={`p-3 sm:p-4 rounded-lg border ${
+                          isExcluded 
+                            ? "bg-red-500/10 border-red-500/30" 
+                            : "bg-white/5 border-white/10"
+                        }`}
+                      >
+                        <h3 className={`text-base sm:text-lg font-bold mb-3 ${
+                          isExcluded ? "text-red-400" : "text-white"
+                        }`}>
+                          {day}
+                        </h3>
+                        <div className="space-y-2">
+                          {SLOTS.map((slot) => {
+                            const session = schedule.sessions.find(s => s.day === day && s.slot === slot);
+                            return (
+                              <div key={slot} className="min-h-[60px]">
+                                {session ? (
+                                  <div className={`p-2 sm:p-3 ${getSlotColor(session.component_type)} rounded-lg backdrop-blur-sm border`}>
+                                    <div className="font-semibold text-white mb-1 text-xs sm:text-sm break-words">
+                                      {session.course.name} ({session.component_type})
+                                    </div>
+                                    {session.room && (
+                                      <div className="text-gray-300 text-xs flex items-center gap-1 mb-1">
+                                        <MapPin className="w-3 h-3 flex-shrink-0" />
+                                        <span className="break-words">{session.room}</span>
+                                      </div>
+                                    )}
+                                    {session.instructor && (
+                                      <div className="text-gray-400 text-xs flex items-start gap-1">
+                                        <User className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                                        <span className="break-words">{session.instructor}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="text-gray-600 text-xs text-center py-2">-</div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+
+                {/* Desktop View: Table */}
+                <div className="hidden md:block overflow-x-auto mb-4 sm:mb-6 -mx-3 sm:-mx-4 md:-mx-6 px-3 sm:px-4 md:px-6">
+                  <table className="w-full min-w-[600px]">
+                    <thead>
+                      <tr>
+                        <th className="p-3 sm:p-4 text-left text-white font-semibold text-sm sm:text-base sticky left-0 bg-gray-950/95 z-10">Day / Slot</th>
+                        {SLOTS.map((slot) => (
+                          <th key={slot} className="p-3 sm:p-4 text-center text-white font-semibold text-sm sm:text-base">
+                            Slot {slot}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {DAYS.map((day, dayIndex) => (
+                        <motion.tr
+                          key={day}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ delay: (index * 0.1) + (dayIndex * 0.02) }}
+                          className={`border-t border-white/10 ${
+                            excludedDays.includes(day) ? "bg-red-500/10" : ""
+                          }`}
+                        >
+                          <td className={`p-3 sm:p-4 text-white font-semibold text-sm sm:text-base sticky left-0 bg-gray-950/95 z-10 ${
+                            excludedDays.includes(day) ? "text-red-400" : ""
+                          }`}>
+                            {day}
+                          </td>
+                          {SLOTS.map((slot) => {
+                            const cellContent = getCellContent(schedule, day, slot);
+                            return (
+                              <td
+                                key={slot}
+                                className="p-2 sm:p-3 min-w-[150px] sm:min-w-[180px] md:min-w-[200px] h-auto min-h-[80px] sm:min-h-[96px] border border-white/10 align-top"
+                              >
+                                {cellContent || (
+                                  <div className="text-gray-600 text-xs text-center pt-4">-</div>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </motion.tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Courses & Classes Registration */}
+                {schedule.courses && schedule.courses.length > 0 && (
+                  <div className="mt-6 pt-6 border-t border-white/10">
+                    <h4 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
+                      <BookOpen className="w-4 h-4 text-cyan-400" />
+                      Courses & Classes Registration
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {schedule.courses.map((courseData: any, idx: number) => (
+                        <motion.div
+                          key={idx}
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: (index * 0.1) + (idx * 0.05) }}
+                          className="p-4 bg-white/5 border border-white/10 rounded-lg hover:border-cyan-500/50 transition-all"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1">
+                              <div className="text-white font-semibold text-sm mb-1">
+                                {courseData.course.code}
+                              </div>
+                              <div className="text-gray-300 text-xs mb-2">
+                                {courseData.course.name}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-gray-400 text-xs">Class:</span>
+                                <span className="px-2 py-1 bg-cyan-500/20 border border-cyan-500/50 rounded text-cyan-300 text-xs font-semibold">
+                                  {courseData.class.class_code}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="p-2 bg-cyan-500/20 rounded-lg">
+                              <Users className="w-4 h-4 text-cyan-400" />
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            );
+          })}
       </div>
     </div>
   );

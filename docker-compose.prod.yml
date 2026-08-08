@@ -1,7 +1,25 @@
-# Production docker-compose.yml for VPS
-# Use this on your VPS server
+# VPS production stack — local PostgreSQL + backend + frontend
+# Copy entire deploy/vps/ folder contents to /root/portfolio/ on the server
 
 services:
+  db:
+    image: postgres:17
+    container_name: portfolio-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-timetable_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-timetable_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-timetable_admin} -d ${POSTGRES_DB:-timetable_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks: [portfolio-network]
+    restart: unless-stopped
+
   backend:
     image: mabouellais/timetable-backend:deploy
     container_name: portfolio-backend
@@ -11,25 +29,38 @@ services:
       HOST: 0.0.0.0
       PORT: 5000
     ports:
-      - "0.0.0.0:5002:5000"  # Map host port 5002 to container port 5000
+      - "0.0.0.0:5002:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:5000', ()=>process.exit(0)).on('error', ()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
     networks: [portfolio-network]
     restart: unless-stopped
-    pull_policy: missing
+    pull_policy: always
 
   frontend:
     image: mabouellais/timetable-frontend:deploy
     container_name: portfolio-frontend
     environment:
       NODE_ENV: production
-      API_URL: http://backend:5000  # Server-side (Next.js API routes use Docker network)
-      NEXT_PUBLIC_API_URL: /api  # Client-side (relative path - works with Caddy)
+      API_URL: http://backend:5000
+      NEXT_PUBLIC_API_URL: /api
     ports:
-      - "0.0.0.0:8001:8000"  # Map host port 8001 to container port 8000
+      - "0.0.0.0:8001:8000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks: [portfolio-network]
     restart: unless-stopped
-    pull_policy: missing
+    pull_policy: always
+
+volumes:
+  postgres_data:
 
 networks:
   portfolio-network:

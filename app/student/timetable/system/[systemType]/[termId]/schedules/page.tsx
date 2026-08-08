@@ -91,10 +91,12 @@ export default function SystemSchedulesPage() {
         excludedCoreCourseIds: undefined,
         preferredInstructors: undefined,
         systemType,
+        campusTrack: undefined,
       };
 
       setExcludedDays(preferences.excludedDays || []);
 
+      const studentName = typeof window !== "undefined" ? sessionStorage.getItem(`generation_student_name_${termToken}`) : null;
       const response = await studentTimetableAPI.generateSchedules({
         termId: termToken,
         excludedDays: preferences.excludedDays || [],
@@ -102,7 +104,12 @@ export default function SystemSchedulesPage() {
         excludedCoreCourseIds: preferences.excludedCoreCourseIds,
         preferredInstructors: preferences.preferredInstructors,
         systemType,
+        campusTrack: preferences.campusTrack, // Include campus track for Term 4 System 140
+        ...(studentName && studentName.trim() ? { studentName: studentName.trim() } : {}),
       });
+      if (typeof window !== "undefined" && studentName) {
+        sessionStorage.removeItem(`generation_student_name_${termToken}`);
+      }
 
       const schedulesData = response.data || [];
       // Sort schedules by quality
@@ -261,12 +268,12 @@ export default function SystemSchedulesPage() {
       doc.setFillColor(3, 7, 18);
       doc.rect(0, 0, pageWidth, pageHeight, "F");
 
-      // Teal header with gradient effect
+      // Blood red header with gradient effect
       for (let i = 0; i < 30; i++) {
         const ratio = i / 30;
-        const r = Math.floor(20 + ratio * 15);
-        const g = Math.floor(184 - ratio * 20);
-        const b = Math.floor(166 - ratio * 15);
+        const r = Math.floor(139 - ratio * 39);
+        const g = 0;
+        const b = 0;
         doc.setFillColor(r, g, b);
         doc.rect(0, i, pageWidth, 1, "F");
       }
@@ -286,12 +293,11 @@ export default function SystemSchedulesPage() {
 
       let yPos = 35;
 
-      // Soft table header matching site
-      doc.setFillColor(15, 23, 42);
+      // Table header - blood red
+      doc.setFillColor(50, 0, 0);
       doc.rect(margin, yPos, tableWidth, headerHeight, "F");
       
-      // Subtle accent line (softer, thinner) - Teal
-      doc.setFillColor(20, 184, 166);
+      doc.setFillColor(139, 0, 0);
       doc.rect(margin, yPos, 1.5, headerHeight, "F");
       
       doc.setTextColor(255, 255, 255);
@@ -315,9 +321,9 @@ export default function SystemSchedulesPage() {
           doc.rect(0, 0, pageWidth, pageHeight, "F");
           yPos = margin;
           
-          doc.setFillColor(15, 23, 42);
+          doc.setFillColor(50, 0, 0);
           doc.rect(margin, yPos, tableWidth, headerHeight, "F");
-          doc.setFillColor(20, 184, 166);
+          doc.setFillColor(139, 0, 0);
           doc.rect(margin, yPos, 2, headerHeight, "F");
           doc.setTextColor(255, 255, 255);
           doc.setFontSize(11);
@@ -336,12 +342,12 @@ export default function SystemSchedulesPage() {
         doc.setFillColor(isExcluded ? 30 : 15, isExcluded ? 10 : 23, isExcluded ? 10 : 42);
         doc.rect(margin, yPos, cellWidth, rowHeight, "F");
         
-        // Subtle accent line (thinner, softer)
+        // Accent line - blood red (excluded stays error red)
         if (isExcluded) {
           doc.setFillColor(239, 68, 68);
           doc.rect(margin, yPos, 1.5, rowHeight, "F");
         } else {
-          doc.setFillColor(20, 184, 166);
+          doc.setFillColor(139, 0, 0);
           doc.rect(margin, yPos, 1.5, rowHeight, "F");
         }
         
@@ -397,8 +403,8 @@ export default function SystemSchedulesPage() {
           yPos = margin;
         }
 
-        // Neon cyan header
-        doc.setFillColor(6, 182, 212);
+        // Blood red section header
+        doc.setFillColor(139, 0, 0);
         doc.rect(margin, yPos, tableWidth, 12, "F");
         doc.setTextColor(255, 255, 255);
         doc.setFontSize(12);
@@ -415,17 +421,15 @@ export default function SystemSchedulesPage() {
             yPos = margin;
           }
 
-          // Soft card matching site (embedded, not outlined)
+          // Soft card - blood red border/accent
           doc.setFillColor(15, 23, 42);
           doc.roundedRect(margin, yPos, tableWidth, 18, 2, 2, "F");
           
-          // Subtle border (softer, thinner) - Teal
-          doc.setDrawColor(20, 184, 166);
+          doc.setDrawColor(139, 0, 0);
           doc.setLineWidth(0.5);
           doc.roundedRect(margin, yPos, tableWidth, 18, 2, 2, "D");
           
-          // Subtle accent line (thinner) - Teal
-          doc.setFillColor(20, 184, 166);
+          doc.setFillColor(139, 0, 0);
           doc.rect(margin, yPos, 1.5, 18, "F");
 
           doc.setTextColor(255, 255, 255);
@@ -440,7 +444,7 @@ export default function SystemSchedulesPage() {
 
           doc.setFontSize(8);
           doc.setFont("helvetica", "bold");
-          doc.setTextColor(20, 184, 166);
+          doc.setTextColor(139, 0, 0);
           doc.text(`Class: ${courseData.class.class_code}`, margin + 4, yPos + 17);
 
           yPos += 20;
@@ -459,19 +463,10 @@ export default function SystemSchedulesPage() {
           pageHeight - 5,
           { align: "right" }
         );
-        // Designer credit at bottom left - gradient color with neon effect
+        // Designer credit at bottom left - blood red
         doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
-        // Add subtle glow effect by drawing text with slight offset in lighter color
-        doc.setTextColor(100, 200, 255); // Lighter cyan for glow
-        doc.text(
-          "DESIGNED BY MAHMOUD HAISAM",
-          margin + 0.2,
-          pageHeight - 5 + 0.2,
-          { align: "left" }
-        );
-        // Main text with gradient-like color (cyan-400: rgb(34, 211, 238))
-        doc.setTextColor(34, 211, 238); // cyan-400 - matches system number gradient
+        doc.setTextColor(139, 0, 0);
         doc.text(
           "DESIGNED BY MAHMOUD HAISAM",
           margin,
@@ -521,12 +516,12 @@ export default function SystemSchedulesPage() {
 
         let yPos = margin;
 
-        // Teal header with gradient effect
+        // Blood red header with gradient effect
         for (let i = 0; i < 30; i++) {
           const ratio = i / 30;
-          const r = Math.floor(20 + ratio * 15);
-          const g = Math.floor(184 - ratio * 20);
-          const b = Math.floor(166 - ratio * 15);
+          const r = Math.floor(139 - ratio * 39);
+          const g = 0;
+          const b = 0;
           doc.setFillColor(r, g, b);
           doc.rect(0, i, pageWidth, 1, "F");
         }
@@ -546,12 +541,11 @@ export default function SystemSchedulesPage() {
 
         yPos = 35;
 
-        // Soft table header matching site
-        doc.setFillColor(15, 23, 42);
+        // Table header - blood red
+        doc.setFillColor(50, 0, 0);
         doc.rect(margin, yPos, tableWidth, headerHeight, "F");
         
-        // Subtle accent line (softer, thinner) - Teal
-        doc.setFillColor(20, 184, 166);
+        doc.setFillColor(139, 0, 0);
         doc.rect(margin, yPos, 1.5, headerHeight, "F");
         
         doc.setTextColor(255, 255, 255);
@@ -575,9 +569,9 @@ export default function SystemSchedulesPage() {
             doc.rect(0, 0, pageWidth, pageHeight, "F");
             yPos = margin;
             
-            doc.setFillColor(15, 23, 42);
+            doc.setFillColor(50, 0, 0);
             doc.rect(margin, yPos, tableWidth, headerHeight, "F");
-            doc.setFillColor(20, 184, 166);
+            doc.setFillColor(139, 0, 0);
             doc.rect(margin, yPos, 2, headerHeight, "F");
             doc.setTextColor(255, 255, 255);
             doc.setFontSize(11);
@@ -591,17 +585,16 @@ export default function SystemSchedulesPage() {
             yPos += headerHeight;
           }
 
-          // Day cell - soft, embedded style
+          // Day cell - blood red accent
           const isExcluded = excludedDays.includes(day);
           doc.setFillColor(isExcluded ? 30 : 15, isExcluded ? 10 : 23, isExcluded ? 10 : 42);
           doc.rect(margin, yPos, cellWidth, rowHeight, "F");
           
-          // Subtle accent line (thinner, softer)
           if (isExcluded) {
             doc.setFillColor(239, 68, 68);
             doc.rect(margin, yPos, 1.5, rowHeight, "F");
           } else {
-            doc.setFillColor(20, 184, 166);
+            doc.setFillColor(139, 0, 0);
             doc.rect(margin, yPos, 1.5, rowHeight, "F");
           }
           
@@ -657,8 +650,8 @@ export default function SystemSchedulesPage() {
             yPos = margin;
           }
 
-          // Teal header
-          doc.setFillColor(20, 184, 166);
+          // Blood red section header
+          doc.setFillColor(139, 0, 0);
           doc.rect(margin, yPos, tableWidth, 12, "F");
           doc.setTextColor(255, 255, 255);
           doc.setFontSize(12);
@@ -675,17 +668,14 @@ export default function SystemSchedulesPage() {
               yPos = margin;
             }
 
-            // Soft card matching site (embedded, not outlined)
             doc.setFillColor(15, 23, 42);
             doc.roundedRect(margin, yPos, tableWidth, 18, 2, 2, "F");
             
-            // Subtle border (softer, thinner)
-            doc.setDrawColor(6, 182, 212);
+            doc.setDrawColor(139, 0, 0);
             doc.setLineWidth(0.5);
             doc.roundedRect(margin, yPos, tableWidth, 18, 2, 2, "D");
             
-            // Subtle accent line (thinner)
-            doc.setFillColor(6, 182, 212);
+            doc.setFillColor(139, 0, 0);
             doc.rect(margin, yPos, 1.5, 18, "F");
 
             doc.setTextColor(255, 255, 255);
@@ -696,11 +686,11 @@ export default function SystemSchedulesPage() {
             doc.setFontSize(8);
             doc.setFont("helvetica", "normal");
             doc.setTextColor(200, 200, 200);
-            doc.text(courseData.course.name, margin + 4, yPos + 12);
+            doc.text(courseData.course.name, margin + 4, yPos + 12, { maxWidth: tableWidth - 8 });
 
             doc.setFontSize(8);
             doc.setFont("helvetica", "bold");
-            doc.setTextColor(6, 182, 212);
+            doc.setTextColor(139, 0, 0);
             doc.text(`Class: ${courseData.class.class_code}`, margin + 4, yPos + 17);
 
             yPos += 20;
@@ -708,7 +698,7 @@ export default function SystemSchedulesPage() {
         }
       });
 
-      // Footer on all pages - dark with subtle text
+      // Footer on all pages - blood red designer credit
       const totalPages = doc.getNumberOfPages();
       for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);
@@ -720,19 +710,9 @@ export default function SystemSchedulesPage() {
           pageHeight - 5,
           { align: "right" }
         );
-        // Designer credit at bottom left - gradient color with neon effect
         doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
-        // Add subtle glow effect by drawing text with slight offset in lighter color
-        doc.setTextColor(100, 200, 255); // Lighter cyan for glow
-        doc.text(
-          "DESIGNED BY MAHMOUD HAISAM",
-          margin + 0.2,
-          pageHeight - 5 + 0.2,
-          { align: "left" }
-        );
-        // Main text with gradient-like color (cyan-400: rgb(34, 211, 238))
-        doc.setTextColor(34, 211, 238); // cyan-400 - matches system number gradient
+        doc.setTextColor(139, 0, 0);
         doc.text(
           "DESIGNED BY MAHMOUD HAISAM",
           margin,

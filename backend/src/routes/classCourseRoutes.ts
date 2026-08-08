@@ -3,6 +3,7 @@ import {
   assignCoursesToClass,
   getClassCourses,
   deleteClassCourse,
+  patchClassCourse,
 } from "../controllers/classCourseController";
 
 // Use mergeParams: true to merge params from parent route
@@ -16,7 +17,8 @@ router.get("/", getClassCourses);
 
 export default router;
 
-// Direct route for deleting a class-course assignment
+// Direct route for deleting or patching a class-course assignment
 export const classCourseDirectRouter = Router();
+classCourseDirectRouter.patch("/:id", patchClassCourse);
 classCourseDirectRouter.delete("/:id", deleteClassCourse);
 

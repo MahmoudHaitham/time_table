@@ -1,0 +1,67 @@
+# VPS production stack — local PostgreSQL + backend + frontend
+# Copy to: /root/portfolio/docker-compose.yml
+
+services:
+  db:
+    image: postgres:17
+    container_name: portfolio-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-timetable_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-timetable_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-timetable_admin} -d ${POSTGRES_DB:-timetable_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks: [portfolio-network]
+    restart: unless-stopped
+
+  backend:
+    image: mabouellais/timetable-backend:deploy
+    container_name: portfolio-backend
+    env_file: [ ./backend/.env ]
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 5000
+    ports:
+      - "0.0.0.0:5002:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:5000', ()=>process.exit(0)).on('error', ()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    networks: [portfolio-network]
+    restart: unless-stopped
+    pull_policy: always
+
+  frontend:
+    image: mabouellais/timetable-frontend:deploy
+    container_name: portfolio-frontend
+    environment:
+      NODE_ENV: production
+      API_URL: http://backend:5000
+      NEXT_PUBLIC_API_URL: /api
+    ports:
+      - "0.0.0.0:8001:8000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks: [portfolio-network]
+    restart: unless-stopped
+    pull_policy: always
+
+volumes:
+  postgres_data:
+
+networks:
+  portfolio-network:
+    driver: bridge

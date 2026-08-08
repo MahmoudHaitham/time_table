@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 
 // Get CSRF token
 function getCSRFToken(): string | null {
@@ -133,6 +133,11 @@ export const classCoursesAPI = {
       method: "POST",
       body: JSON.stringify({ course_ids }),
     }),
+  patch: (classCourseId: number, data: { closed: boolean }) =>
+    fetchAPI(`/class-courses/${classCourseId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
   delete: (classCourseId: number) =>
     fetchAPI(`/class-courses/${classCourseId}`, {
       method: "DELETE",
@@ -164,6 +169,7 @@ export const sessionsAPI = {
   getAllInstructors: () => fetchAPI("/sessions/instructors"),
   getAllInstructorsSchedule: () => fetchAPI("/sessions/instructors/schedule"),
   getAllInstructorsWithSessions: () => fetchAPI("/sessions/instructors/with-sessions"), // Optimized endpoint - returns all data in one request with hash
+  getRoomSchedule: () => fetchAPI("/sessions/room-schedule"), // Get all sessions for room schedule view (admin)
   getByInstructor: (instructorName: string) => {
     const encodedName = encodeURIComponent(instructorName);
     return fetchAPI(`/sessions/instructor/${encodedName}`);
@@ -240,19 +246,22 @@ export const studentTimetableAPI = {
     const url = `/timetable/terms/${termToken}/elective-courses?systemType=${systemType}`;
     return fetchAPI(url);
   },
-  getInstructorsForTerm: (termToken: string, systemType: number, selectedCourseIds?: number[]) => {
+  getInstructorsForTerm: (termToken: string, systemType: number, selectedCourseIds?: number[], campusTrack?: "northampton" | "normal") => {
     let url = `/timetable/terms/${termToken}/instructors?systemType=${systemType}`;
     if (selectedCourseIds && selectedCourseIds.length > 0) {
       url += `&selectedCourseIds=${selectedCourseIds.join(',')}`;
     }
-    return fetchAPI(url);
-  },
-  getInstructorsForCourses: (systemType: number, courseIds: number[]) => {
-    let url = `/timetable/instructors/courses?systemType=${systemType}`;
-    if (courseIds && courseIds.length > 0) {
-      url += `&courseIds=${courseIds.join(',')}`;
+    if (campusTrack) {
+      url += `&campusTrack=${campusTrack}`;
     }
     return fetchAPI(url);
+  },
+  getInstructorsForCourses: (systemType: number | null, courseIds: number[]) => {
+    const params = new URLSearchParams();
+    if (courseIds?.length) params.set("courseIds", courseIds.join(","));
+    if (systemType != null) params.set("systemType", String(systemType));
+    else params.set("allSystems", "true");
+    return fetchAPI(`/timetable/instructors/courses?${params.toString()}`);
   },
   generateSchedules: (data: {
     termId: string | number; // Accepts token (string) or ID (number) for backward compatibility
@@ -261,20 +270,27 @@ export const studentTimetableAPI = {
     excludedCoreCourseIds?: number[];
     systemType: number; // Required: 140, 160, or 180
     preferredInstructors?: string[]; // Optional: array of preferred instructor names
+    campusTrack?: "northampton" | "normal"; // Optional: for Term 4 System 140 (NORTHAMPTON separation)
+    studentName?: string; // Optional: for generation log (admin view)
   }) => fetchAPI("/timetable/generate", {
     method: "POST",
     body: JSON.stringify(data),
   }),
   // Other section APIs
-  getAllCoursesForOther: (systemType: number) => {
+  getAllCoursesForOther: (systemType?: number | null, allSystems?: boolean) => {
+    if (allSystems) {
+      return fetchAPI("/timetable/other/courses?allSystems=true");
+    }
     const url = `/timetable/other/courses?systemType=${systemType}`;
     return fetchAPI(url);
   },
   generateOtherSectionSchedules: (data: {
     selectedCourseIds: number[];
     excludedDays: string[];
-    preferredInstructors?: string[]; // Optional: array of preferred instructor names
-    systemType: number; // Required: 140, 160, or 180
+    preferredInstructors?: string[];
+    systemType?: number | null; // 140, 160, or 180 when single system
+    allSystems?: boolean; // true when "No specific system" (mix 140, 160, 180)
+    studentName?: string;
   }) => fetchAPI("/timetable/other/generate", {
     method: "POST",
     body: JSON.stringify(data),
@@ -309,3 +325,24 @@ export const otherDeptAPI = {
     }),
 };
 
+// Generation Logs API (admin only)
+export const generationLogsAPI = {
+  getLogs: () => fetchAPI("/generation-logs"),
+};
+
+// Student Problems API
+export const problemsAPI = {
+  /** Submit a problem report (student, no auth required) */
+  submit: (data: {
+    name: string;
+    registration_number: string;
+    northampton: "yes" | "no";
+    term: string; // "4" | "5" | "6" | "7" | "8" | "9" | "10" | "other"
+    description: string;
+  }) => fetchAPI("/problems", { method: "POST", body: JSON.stringify(data) }),
+  /** List all problems (admin only, first-come-first-served order) */
+  getList: () => fetchAPI("/problems"),
+  /** Update problem status (admin only): "pending" | "solved" | "not_solved" */
+  updateStatus: (id: number, status: "pending" | "solved" | "not_solved") =>
+    fetchAPI(`/problems/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
+};

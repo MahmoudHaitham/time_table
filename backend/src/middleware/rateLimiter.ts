@@ -156,11 +156,11 @@ export const rateLimiters = {
   // General API: 100 requests per minute
   general: rateLimiter.createLimiter(100, 60 * 1000),
   
-  // Timetable queries: 50 requests per minute (heavier queries)
-  timetable: rateLimiter.createLimiter(50, 60 * 1000),
+  // Timetable queries: 300 requests per minute
+  timetable: rateLimiter.createLimiter(300, 60 * 1000),
   
   // Schedule generation: 10 requests per minute (very heavy computation)
-  scheduleGeneration: rateLimiter.createLimiter(10, 60 * 1000),
+  scheduleGeneration: rateLimiter.createLimiter(1000, 60 * 1000),
   
   // Public endpoints: More lenient (200 requests per minute)
   public: rateLimiter.createLimiter(200, 60 * 1000),

@@ -10,7 +10,7 @@ export default function ConditionalNavbarFooter({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const isAdminRoute = pathname?.startsWith("/admin") || pathname?.startsWith("/timetable") || pathname?.startsWith("/login") || pathname?.startsWith("/student");
+  const isAdminRoute = pathname?.startsWith("/admin") || pathname?.startsWith("/timetable") || pathname?.startsWith("/login") || pathname?.startsWith("/student") || pathname === "/problem";
 
   if (isAdminRoute) {
     return <>{children}</>;

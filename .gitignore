@@ -24,6 +24,14 @@ yarn-error.log*
 # Local env files
 .env
 .env*.local
+
+# Database dumps (upload to VPS manually)
+terms.sql
+*.sql.dump
+
+# VPS deploy secrets (templates are committed, live copies are not)
+deploy/vps/.env
+deploy/vps/backend/.env
 .env.development.local
 .env.test.local
 .env.production.local

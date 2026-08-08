@@ -59,6 +59,9 @@ export default function TemplatesManagementPage() {
   const [terms, setTerms] = useState<Term[]>([]);
   const [selectedTerm, setSelectedTerm] = useState<Term | null>(null);
   
+  // Step 2.5: Campus Track Selection (for Term 4 System 140 only)
+  const [campusTrack, setCampusTrack] = useState<"northampton" | "normal" | null>(null);
+  
   // Step 3: Course/Elective Selection
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedElectives, setSelectedElectives] = useState<number[]>([]);
@@ -68,6 +71,15 @@ export default function TemplatesManagementPage() {
   const [loading, setLoading] = useState(false);
   const [generatingFor, setGeneratingFor] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
+  
+  /**
+   * Check if campus track selection is required for given term and system
+   * Only Term 4 with System 140 requires NORTHAMPTON/Normal separation
+   */
+  const requiresCampusTrackSeparation = (termNumber: number | string, systemType: number): boolean => {
+    const termNum = typeof termNumber === "string" ? parseInt(termNumber) : termNumber;
+    return termNum === 4 && systemType === 140;
+  };
 
   const systems = [
     { value: 140, label: "140", color: "from-blue-500 to-blue-600" },
@@ -90,8 +102,16 @@ export default function TemplatesManagementPage() {
   useEffect(() => {
     if (selectedTerm) {
       loadCoursesForTerm(selectedTerm.id);
+      
+      // Reset campus track when term changes
+      // Check if this term/system requires campus track selection
+      if (selectedSystem && requiresCampusTrackSeparation(selectedTerm.term_number, selectedSystem)) {
+        setCampusTrack("normal"); // Default to normal
+      } else {
+        setCampusTrack(null);
+      }
     }
-  }, [selectedTerm]);
+  }, [selectedTerm, selectedSystem]);
 
   const handleLogout = async () => {
     try {
@@ -192,12 +212,23 @@ export default function TemplatesManagementPage() {
 
   const generateTemplate = async () => {
     if (!selectedTerm || !selectedSystem) return;
+    
+    // Check if campus track is required but not selected
+    const needsCampusTrack = requiresCampusTrackSeparation(selectedTerm.term_number, selectedSystem);
+    if (needsCampusTrack && !campusTrack) {
+      setMessage({
+        type: "error",
+        text: "❌ Term 4 System 140 requires campus track selection. Please choose NORTHAMPTON or Normal.",
+      });
+      return;
+    }
 
     const electiveKey = selectedElectives.length > 0 
       ? selectedElectives.sort().join(",") 
       : "core-only";
+    const trackKey = campusTrack ? `-${campusTrack}` : "";
     
-    setGeneratingFor(electiveKey);
+    setGeneratingFor(`${electiveKey}${trackKey}`);
     setMessage(null);
 
     try {
@@ -214,6 +245,7 @@ export default function TemplatesManagementPage() {
           body: JSON.stringify({
             systemType: selectedSystem,
             electiveCourseIds: selectedElectives.length > 0 ? selectedElectives : null,
+            campusTrack: campusTrack || undefined, // Include campus track for Term 4 System 140
           }),
         }
       );
@@ -226,10 +258,11 @@ export default function TemplatesManagementPage() {
       const data = await response.json();
       
       // Check if template already exists
+      const campusTrackLabel = campusTrack ? ` (${campusTrack.toUpperCase()})` : "";
       if (data.already_exists) {
         setMessage({
           type: "info",
-          text: `ℹ️ Template already exists! Term ${selectedTerm.term_number}, System ${selectedSystem}${selectedElectives.length > 0 ? ` with ${selectedElectives.length} elective(s)` : " (core-only)"} - ${data.template.schedule_count} schedules`,
+          text: `ℹ️ Template already exists! Term ${selectedTerm.term_number}, System ${selectedSystem}${campusTrackLabel}${selectedElectives.length > 0 ? ` with ${selectedElectives.length} elective(s)` : " (core-only)"} - ${data.template.schedule_count} schedules`,
         });
         setGeneratingFor(null);
         loadAllTemplates();
@@ -238,7 +271,7 @@ export default function TemplatesManagementPage() {
       
       setMessage({
         type: "success",
-        text: `✅ Template generation started! Creating template for Term ${selectedTerm.term_number}, System ${selectedSystem}${selectedElectives.length > 0 ? ` with ${selectedElectives.length} elective(s)` : " (core-only)"}. This runs in background (~1-2 min).`,
+        text: `✅ Template generation started! Creating template for Term ${selectedTerm.term_number}, System ${selectedSystem}${campusTrackLabel}${selectedElectives.length > 0 ? ` with ${selectedElectives.length} elective(s)` : " (core-only)"}. This runs in background (~1-2 min).`,
       });
 
       setTimeout(() => {
@@ -456,6 +489,54 @@ export default function TemplatesManagementPage() {
               </motion.div>
             )}
 
+            {/* Step 2.5: Campus Track Selection (for Term 4 System 140 only) */}
+            {selectedTerm && selectedSystem && requiresCampusTrackSeparation(selectedTerm.term_number, selectedSystem) && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="glass border border-red-500/30 rounded-xl p-4 sm:p-6"
+              >
+                <div className="flex items-center gap-3 mb-4 sm:mb-6">
+                  <div className="flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-r from-red-500 to-orange-600 text-white text-sm sm:text-base font-bold flex-shrink-0">
+                    !
+                  </div>
+                  <div>
+                    <h2 className="text-xl sm:text-2xl font-bold text-white">Select Campus Track</h2>
+                    <p className="text-sm text-red-400">Required for Term 4 System 140</p>
+                  </div>
+                </div>
+
+                <p className="text-sm text-gray-400 mb-4">
+                  This term has separate NORTHAMPTON and Normal classes. Select which track to generate templates for.
+                </p>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    onClick={() => setCampusTrack("northampton")}
+                    className={`p-4 rounded-lg border-2 transition-all min-h-[60px] ${
+                      campusTrack === "northampton"
+                        ? "border-red-500 bg-red-500/20 shadow-md scale-105"
+                        : "border-white/10 glass hover:border-red-500/50"
+                    }`}
+                  >
+                    <div className="font-bold text-white mb-1">NORTHAMPTON</div>
+                    <div className="text-xs text-gray-400">NORTHAMPTON ONLY classes</div>
+                  </button>
+                  <button
+                    onClick={() => setCampusTrack("normal")}
+                    className={`p-4 rounded-lg border-2 transition-all min-h-[60px] ${
+                      campusTrack === "normal"
+                        ? "border-cyan-500 bg-cyan-500/20 shadow-md scale-105"
+                        : "border-white/10 glass hover:border-cyan-500/50"
+                    }`}
+                  >
+                    <div className="font-bold text-white mb-1">Normal</div>
+                    <div className="text-xs text-gray-400">Regular classes</div>
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
             {/* Step 3: Elective Selection */}
             {selectedTerm && (
               <motion.div
@@ -527,6 +608,7 @@ export default function TemplatesManagementPage() {
                   </button>
                   <p className="text-xs text-center text-gray-400 mt-2">
                     System {selectedSystem} • Term {selectedTerm?.term_number}
+                    {campusTrack && ` • ${campusTrack.toUpperCase()}`}
                     {selectedElectives.length > 0 
                       ? ` • ${selectedElectives.length} elective${selectedElectives.length > 1 ? 's' : ''}`
                       : " • Core-only"

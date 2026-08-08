@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { studentTimetableAPI } from "@/lib/api/timetable";
-import { Calendar, CheckCircle2, BookOpen } from "lucide-react";
+import Link from "next/link";
+import { Calendar, CheckCircle2, BookOpen, AlertCircle, X } from "lucide-react";
 
 interface Term {
   id?: number; // ID removed for security, use token instead
@@ -20,6 +21,7 @@ export default function StudentTimetablePage() {
   const [terms, setTerms] = useState<Term[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showOtherDisclaimer, setShowOtherDisclaimer] = useState(false);
 
   useEffect(() => {
     loadPublishedTerms();
@@ -46,6 +48,11 @@ export default function StudentTimetablePage() {
   };
 
   const handleOtherSelect = () => {
+    setShowOtherDisclaimer(true);
+  };
+
+  const handleOtherDisclaimerOkay = () => {
+    setShowOtherDisclaimer(false);
     router.push(`/student/timetable/other`);
   };
 
@@ -177,6 +184,71 @@ export default function StudentTimetablePage() {
             <span className="break-words">Open Other Section</span>
           </button>
         </motion.div>
+
+        {/* Problem Report Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="mt-6 sm:mt-8 md:mt-10 glass border border-white/10 rounded-xl sm:rounded-2xl p-4 sm:p-6 md:p-8 lg:p-10 xl:p-12 shadow-xl"
+        >
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6 md:mb-8">
+            <div className="p-2 sm:p-3 md:p-4 bg-gradient-to-br from-red-500/30 to-red-700/30 rounded-lg sm:rounded-xl shadow-lg shadow-red-500/20 flex-shrink-0">
+              <AlertCircle className="w-5 h-5 sm:w-6 sm:h-7 text-red-400" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-1 sm:mb-2 break-words">Report a Problem</h2>
+              <p className="text-gray-400 text-sm sm:text-base break-words">Submit your name, registration number, and a full description. We will respond in order received.</p>
+            </div>
+          </div>
+          <p className="text-gray-300 mb-4 sm:mb-6 text-sm sm:text-base break-words">
+            Describe any issue you are facing. You can write in English or Arabic. First submitted are served first.
+          </p>
+          <Link
+            href="/problem"
+            className="inline-flex items-center gap-2 w-full sm:w-auto justify-center px-4 sm:px-6 md:px-8 py-3 sm:py-4 bg-gradient-to-r from-red-500 to-red-700 text-white rounded-xl font-bold text-sm sm:text-base md:text-lg shadow-2xl shadow-red-500/50 hover:shadow-red-500/70 hover:scale-105 transition-all min-h-[44px] sm:min-h-[52px]"
+          >
+            <AlertCircle className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
+            <span className="break-words">Report a Problem</span>
+          </Link>
+        </motion.div>
+
+        {/* Other Section Disclaimer Modal - same style as site alerts, Other route colors */}
+        {showOtherDisclaimer && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="glass backdrop-blur-xl border border-purple-500/50 rounded-2xl p-6 w-full max-w-md shadow-2xl shadow-purple-500/20"
+            >
+              <div className="flex items-start gap-3 mb-4">
+                <div className="p-3 bg-purple-500/20 rounded-lg flex-shrink-0">
+                  <AlertCircle className="w-6 h-6 text-purple-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-2xl font-bold text-white mb-2">Important Notice</h2>
+                  <p className="text-gray-300 text-sm sm:text-base break-words leading-relaxed">
+                    You are fully responsible for verifying course prerequisites. The system is not responsible if you select courses with prerequisites that you have not completed. Please review and confirm before proceeding.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowOtherDisclaimer(false)}
+                  className="p-1 hover:bg-white/10 rounded-lg transition-colors flex-shrink-0"
+                >
+                  <X className="w-5 h-5 text-gray-400 hover:text-white" />
+                </button>
+              </div>
+              <div className="flex justify-end mt-6">
+                <button
+                  onClick={handleOtherDisclaimerOkay}
+                  className="px-6 py-2 rounded-lg font-semibold shadow-lg shadow-purple-500/50 hover:shadow-xl transition-all bg-gradient-to-r from-purple-500 to-pink-600 text-white"
+                >
+                  Okay
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -595,9 +595,17 @@ export default function CoursesForOtherDeptPage() {
                                         </div>
                                       )}
                                       {session.room && (
-                                        <div className="text-xs text-gray-300 mt-1 flex items-center gap-1">
-                                          <MapPin className="w-3 h-3" />
-                                          {session.room}
+                                        <div className="text-xs mt-1 space-y-1">
+                                          {/* Show multiple rooms, each on a new line */}
+                                          {session.room.split(',').map((rm: string, rmIdx: number) => {
+                                            const trimmed = rm.trim();
+                                            return trimmed ? (
+                                              <div key={rmIdx} className="flex items-center gap-1">
+                                                <MapPin className="w-3 h-3 flex-shrink-0 text-cyan-400" />
+                                                <span className="text-gray-300">{trimmed}</span>
+                                              </div>
+                                            ) : null;
+                                          })}
                                         </div>
                                       )}
                                     </div>
@@ -767,14 +775,35 @@ export default function CoursesForOtherDeptPage() {
               )}
             </div>
             <div className="mb-6">
-              <label className="block text-gray-300 mb-2">Room</label>
+              <label className="block text-gray-300 mb-2 flex items-center gap-2">
+                <MapPin className="w-4 h-4" />
+                Rooms (optional)
+              </label>
               <input
                 type="text"
                 value={sessionData.room}
                 onChange={(e) => setSessionData({ ...sessionData, room: e.target.value })}
                 className="w-full px-4 py-2 glass border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all"
-                placeholder="Enter room number"
+                placeholder="Enter room numbers separated by commas (e.g., A101, B205, Lab3)"
               />
+              <p className="text-gray-500 text-xs mt-1">
+                Add multiple rooms separated by commas for sessions held in different locations.
+              </p>
+              {sessionData.room && (
+                <div className="mt-2 p-2 glass border border-cyan-500/30 rounded-lg">
+                  <p className="text-xs text-cyan-400 font-semibold mb-1">Rooms to add:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {sessionData.room.split(',').map((rm: string, idx: number) => {
+                      const trimmed = rm.trim();
+                      return trimmed ? (
+                        <span key={idx} className="px-2 py-1 bg-cyan-500/20 text-cyan-300 rounded text-xs">
+                          {trimmed}
+                        </span>
+                      ) : null;
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="flex gap-4">
               <button

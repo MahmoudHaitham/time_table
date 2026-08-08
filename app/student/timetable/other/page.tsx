@@ -13,6 +13,7 @@ interface Course {
   is_elective: boolean;
   term_number: string;
   term_id: number;
+  system_type?: number; // present when "No specific system" (all systems)
   classes: Array<{ id: number; class_code: string }>;
   component_types?: string;
 }
@@ -23,6 +24,7 @@ const SYSTEMS = [180, 160, 140];
 export default function OtherSectionPage() {
   const router = useRouter();
   const [systemType, setSystemType] = useState<number | null>(null);
+  const [allSystems, setAllSystems] = useState(false); // "No specific system" = mix 140, 160, 180
   const [courses, setCourses] = useState<{ core: Course[]; elective: Course[] }>({ core: [], elective: [] });
   const [selectedCourses, setSelectedCourses] = useState<number[]>([]);
   const [excludedDays, setExcludedDays] = useState<string[]>([]);
@@ -32,51 +34,62 @@ export default function OtherSectionPage() {
   const [maxElectives, setMaxElectives] = useState<number>(2); // Default to 2, will be updated from API
   const [instructors, setInstructors] = useState<string[]>([]);
   const [selectedInstructors, setSelectedInstructors] = useState<string[]>([]);
+  const [showNameModal, setShowNameModal] = useState(false);
+  const [studentNameInput, setStudentNameInput] = useState("");
+  const [nameModalError, setNameModalError] = useState<string | null>(null);
 
   // Don't auto-load from sessionStorage - always start with system selection
   // This ensures users always see system selection first when entering "Other" section
 
   const handleSystemSelect = (selectedSystem: number) => {
     setSystemType(selectedSystem);
+    setAllSystems(false);
     sessionStorage.setItem("other_section_system_type", selectedSystem.toString());
-    loadCourses(selectedSystem);
+    sessionStorage.removeItem("other_section_all_systems");
+    loadCourses(selectedSystem, false);
   };
 
-  const loadCourses = async (system: number) => {
+  const handleNoSpecificSystem = () => {
+    setSystemType(null);
+    setAllSystems(true);
+    sessionStorage.removeItem("other_section_system_type");
+    sessionStorage.setItem("other_section_all_systems", "true");
+    loadCourses(null, true);
+  };
+
+  const loadCourses = async (system: number | null, useAllSystems: boolean) => {
     try {
       setLoading(true);
-      const response = await studentTimetableAPI.getAllCoursesForOther(system);
+      const response = await studentTimetableAPI.getAllCoursesForOther(system ?? undefined, useAllSystems);
       const allCourses = response.data?.courses || { core: [], elective: [] };
-      
-      // Deduplicate courses by course CODE (not ID) to avoid showing the same course multiple times
-      // If a course appears in multiple terms, we keep only the first occurrence
-      // The backend will handle finding the course across all terms when generating schedules
-      const seenCoreCodes = new Set<string>();
-      const seenElectiveCodes = new Set<string>();
-      
-      const uniqueCore = (allCourses.core || []).filter((course: Course) => {
-        if (seenCoreCodes.has(course.code)) {
-          return false; // Skip duplicate course code
-        }
-        seenCoreCodes.add(course.code);
-        return true; // Keep first occurrence
-      });
-      
-      const uniqueElective = (allCourses.elective || []).filter((course: Course) => {
-        if (seenElectiveCodes.has(course.code)) {
-          return false; // Skip duplicate course code
-        }
-        seenElectiveCodes.add(course.code);
-        return true; // Keep first occurrence
-      });
-      
-      console.log(`[OtherSection] Loaded ${uniqueCore.length} unique core courses and ${uniqueElective.length} unique elective courses for system ${system} (from ${allCourses.core?.length || 0} core and ${allCourses.elective?.length || 0} elective total)`);
-      
-      setCourses({ 
-        core: uniqueCore, 
-        elective: uniqueElective 
-      });
-      setMaxElectives(response.data?.maxElectives || 2); // Get maxElectives from API response
+      const coreList = allCourses.core || [];
+      const electiveList = allCourses.elective || [];
+
+      let uniqueCore: Course[];
+      let uniqueElective: Course[];
+      if (useAllSystems) {
+        // No specific system: keep all entries (same course can appear per system/term); each has system_type
+        uniqueCore = coreList;
+        uniqueElective = electiveList;
+      } else {
+        const seenCoreCodes = new Set<string>();
+        const seenElectiveCodes = new Set<string>();
+        uniqueCore = coreList.filter((course: Course) => {
+          if (seenCoreCodes.has(course.code)) return false;
+          seenCoreCodes.add(course.code);
+          return true;
+        });
+        uniqueElective = electiveList.filter((course: Course) => {
+          if (seenElectiveCodes.has(course.code)) return false;
+          seenElectiveCodes.add(course.code);
+          return true;
+        });
+      }
+
+      console.log(`[OtherSection] Loaded ${uniqueCore.length} core and ${uniqueElective.length} elective courses${useAllSystems ? " (all systems)" : ` for system ${system}`}`);
+
+      setCourses({ core: uniqueCore, elective: uniqueElective });
+      setMaxElectives(response.data?.maxElectives ?? 2);
       setSelectedCourses([]);
       setExcludedDays([]);
       setInstructors([]);
@@ -131,9 +144,9 @@ export default function OtherSectionPage() {
     }
   };
 
-  // Load instructors when courses are selected
   useEffect(() => {
-    if (!systemType || selectedCourses.length === 0) {
+    const inCourseMode = systemType != null || allSystems;
+    if (!inCourseMode || selectedCourses.length === 0) {
       setInstructors([]);
       setSelectedInstructors([]);
       return;
@@ -141,32 +154,24 @@ export default function OtherSectionPage() {
 
     const loadInstructorsAsync = async () => {
       try {
-        console.log("Loading instructors for selected courses:", selectedCourses);
-        
         const instructorsRes = await studentTimetableAPI.getInstructorsForCourses(
-          systemType,
+          allSystems ? null : systemType!,
           selectedCourses
         ).catch((err) => {
           console.error("Error loading instructors:", err);
           return { data: [] };
         });
-        
         const instructorsData = instructorsRes?.data || [];
         setInstructors(instructorsData);
-        console.log("Loaded instructors:", instructorsData.length, instructorsData);
-        
-        // Remove selected instructors that are no longer in the list
-        setSelectedInstructors(prev => 
-          prev.filter(name => instructorsData.includes(name))
-        );
+        setSelectedInstructors(prev => prev.filter(name => instructorsData.includes(name)));
       } catch (err: any) {
         console.error("Error loading instructors:", err);
         setInstructors([]);
       }
     };
-    
+
     loadInstructorsAsync();
-  }, [selectedCourses, systemType]);
+  }, [selectedCourses, systemType, allSystems]);
 
   const toggleDay = (day: string) => {
     if (excludedDays.includes(day)) {
@@ -176,30 +181,40 @@ export default function OtherSectionPage() {
     }
   };
 
-  const handleGenerateSchedules = async () => {
-    if (!systemType) {
-      setError("Please select a system first");
+  const handleGenerateSchedulesClick = () => {
+    const inCourseMode = systemType != null || allSystems;
+    if (!inCourseMode) {
+      setError("Please select a system or No specific system first");
       setTimeout(() => setError(null), 3000);
       return;
     }
-
     if (selectedCourses.length === 0) {
       setError("Please select at least one course");
       setTimeout(() => setError(null), 3000);
       return;
     }
-
-    // Validate elective count
     const electiveCount = selectedCourses.filter(id => {
       const c = [...courses.core, ...courses.elective].find(c => c.id === id);
       return c?.is_elective;
     }).length;
-
     if (maxElectives > 0 && electiveCount > maxElectives) {
       setError(`Maximum ${maxElectives} elective course${maxElectives > 1 ? 's' : ''} allowed`);
       setTimeout(() => setError(null), 3000);
       return;
     }
+    setShowNameModal(true);
+    setStudentNameInput("");
+    setNameModalError(null);
+  };
+
+  const handleGenerateSchedules = async () => {
+    const name = studentNameInput.trim();
+    if (!name) {
+      setNameModalError("Please enter your name.");
+      return;
+    }
+    setNameModalError(null);
+    setShowNameModal(false);
 
     try {
       setGenerating(true);
@@ -209,10 +224,10 @@ export default function OtherSectionPage() {
         selectedCourseIds: selectedCourses,
         excludedDays,
         preferredInstructors: selectedInstructors.length > 0 ? selectedInstructors : undefined,
-        systemType,
+        ...(allSystems ? { allSystems: true } : { systemType: systemType! }),
+        studentName: name,
       });
 
-      // Store schedules and navigate to schedules page
       sessionStorage.setItem("other_section_schedules", JSON.stringify(response.data || []));
       sessionStorage.setItem("other_section_selected_courses", JSON.stringify(selectedCourses));
       sessionStorage.setItem("other_section_excluded_days", JSON.stringify(excludedDays));
@@ -241,17 +256,32 @@ export default function OtherSectionPage() {
     );
   }
 
-  // Show system selection if not selected
-  if (!systemType) {
+  // Full-page loading while generating schedules (until schedule is made)
+  if (generating) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.3 }}
+          className="text-center px-6"
+        >
+          <div className="w-20 h-20 border-4 border-purple-500/30 border-t-purple-500 rounded-full animate-spin mx-auto mb-8"></div>
+          <h2 className="text-2xl sm:text-3xl font-bold text-white mb-3">Generating your schedules</h2>
+          <p className="text-gray-400 text-base sm:text-lg mb-2">Finding the best combinations for your selected courses...</p>
+          <p className="text-gray-500 text-sm">This may take a few moments. Please wait.</p>
+        </motion.div>
+      </div>
+    );
+  }
+
+  const showSystemPicker = !systemType && !allSystems;
+
+  if (showSystemPicker) {
     return (
       <div className="min-h-screen p-6 sm:p-8 lg:p-12">
         <div className="max-w-7xl mx-auto">
-          {/* Header */}
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-12"
-          >
+          <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-12">
             <div className="flex items-center gap-6">
               <button
                 onClick={() => router.push("/student/timetable")}
@@ -266,12 +296,11 @@ export default function OtherSectionPage() {
                 <h1 className="text-5xl sm:text-6xl font-bold mb-3">
                   Other <span className="text-gradient">Section</span>
                 </h1>
-                <p className="text-gray-400 text-lg">Select your academic system first</p>
+                <p className="text-gray-400 text-lg">Select your academic system or mix all systems</p>
               </div>
             </div>
           </motion.div>
 
-          {/* System Selection */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -283,11 +312,11 @@ export default function OtherSectionPage() {
               </div>
               <div>
                 <h2 className="text-3xl font-bold text-white mb-2">Select Academic System</h2>
-                <p className="text-gray-400">Choose your academic system to view available courses</p>
+                <p className="text-gray-400">Choose one system or &quot;No specific system&quot; to mix courses from 140, 160, and 180</p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
               {SYSTEMS.map((system, idx) => (
                 <motion.button
                   key={system}
@@ -297,14 +326,20 @@ export default function OtherSectionPage() {
                   onClick={() => handleSystemSelect(system)}
                   className="p-8 glass border rounded-2xl transition-all border-white/10 hover:border-purple-500/50 hover:bg-white/5 hover:scale-105"
                 >
-                  <div className="text-white font-bold text-4xl mb-2">
-                    {system}
-                  </div>
-                  <div className="text-gray-400 text-sm">
-                    System {system}
-                  </div>
+                  <div className="text-white font-bold text-4xl mb-2">{system}</div>
+                  <div className="text-gray-400 text-sm">System {system}</div>
                 </motion.button>
               ))}
+              <motion.button
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.3 }}
+                onClick={handleNoSpecificSystem}
+                className="p-8 glass border rounded-2xl transition-all border-white/10 hover:border-purple-500/50 hover:bg-white/5 hover:scale-105 border-dashed"
+              >
+                <div className="text-white font-bold text-xl sm:text-2xl mb-2">No specific system</div>
+                <div className="text-gray-400 text-sm">Mix courses from System 140, 160 & 180</div>
+              </motion.button>
             </div>
           </motion.div>
         </div>
@@ -324,15 +359,13 @@ export default function OtherSectionPage() {
           <div className="flex items-center gap-6">
             <button
               onClick={() => {
-                if (systemType) {
-                  setSystemType(null);
-                  sessionStorage.removeItem("other_section_system_type");
-                  setCourses({ core: [], elective: [] });
-                  setSelectedCourses([]);
-                  setExcludedDays([]);
-                } else {
-                  router.push("/student/timetable");
-                }
+                setSystemType(null);
+                setAllSystems(false);
+                sessionStorage.removeItem("other_section_system_type");
+                sessionStorage.removeItem("other_section_all_systems");
+                setCourses({ core: [], elective: [] });
+                setSelectedCourses([]);
+                setExcludedDays([]);
               }}
               className="p-3 glass border border-white/10 rounded-xl hover:border-purple-500/50 hover:bg-white/5 transition-all"
             >
@@ -343,9 +376,12 @@ export default function OtherSectionPage() {
             </div>
             <div>
               <h1 className="text-5xl sm:text-6xl font-bold mb-3">
-                Other <span className="text-gradient">Section</span> - System {systemType}
+                Other <span className="text-gradient">Section</span>
+                {allSystems ? " – No specific system" : ` – System ${systemType}`}
               </h1>
-              <p className="text-gray-400 text-lg">Select courses manually from all available terms</p>
+              <p className="text-gray-400 text-lg">
+                {allSystems ? "Select courses from any system and term; combinations can mix 140, 160 & 180" : "Select courses manually from all available terms"}
+              </p>
             </div>
           </div>
         </motion.div>
@@ -390,7 +426,7 @@ export default function OtherSectionPage() {
                 const isSelected = selectedCourses.includes(course.id);
                 return (
                   <motion.button
-                    key={`core-${course.id}-${course.term_id}-${idx}`}
+                    key={allSystems ? `core-${course.id}-${course.term_id}-${course.system_type ?? 0}-${idx}` : `core-${course.id}-${course.term_id}-${idx}`}
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: 0.2 + idx * 0.03 }}
@@ -405,7 +441,9 @@ export default function OtherSectionPage() {
                       <div className="flex-1">
                         <div className="font-bold text-base mb-1">{course.code}</div>
                         <div className="text-sm text-gray-200">{course.name}</div>
-                        <div className="text-xs text-gray-400 mt-1">Term: {course.term_number}</div>
+                        <div className="text-xs text-gray-400 mt-1">
+                          {allSystems && course.system_type ? `System ${course.system_type} • Term ${course.term_number}` : `Term: ${course.term_number}`}
+                        </div>
                       </div>
                       {isSelected && (
                         <CheckCircle2 className="w-5 h-5 text-cyan-300 flex-shrink-0" />
@@ -444,7 +482,7 @@ export default function OtherSectionPage() {
                   const canSelect = !isSelected && maxElectives > 0 && selectedElectiveCount < maxElectives;
                   return (
                     <motion.button
-                      key={`elective-${course.id}-${course.term_id}-${idx}`}
+                      key={allSystems ? `elective-${course.id}-${course.term_id}-${course.system_type ?? 0}-${idx}` : `elective-${course.id}-${course.term_id}-${idx}`}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.3 + idx * 0.05 }}
@@ -466,7 +504,9 @@ export default function OtherSectionPage() {
                           <div className={`text-sm ${isSelected ? "text-purple-200" : "text-gray-400"} mb-1`}>
                             {course.name}
                           </div>
-                          <div className="text-xs text-gray-500">Term: {course.term_number}</div>
+                          <div className="text-xs text-gray-500">
+                            {allSystems && course.system_type ? `System ${course.system_type} • Term ${course.term_number}` : `Term: ${course.term_number}`}
+                          </div>
                         </div>
                         {isSelected && (
                           <CheckCircle2 className="w-7 h-7 text-purple-300 flex-shrink-0 ml-4" />
@@ -647,23 +687,51 @@ export default function OtherSectionPage() {
               Change System
             </button>
             <button
-              onClick={handleGenerateSchedules}
+              onClick={handleGenerateSchedulesClick}
               disabled={generating || selectedCourses.length === 0}
               className="flex-1 px-10 py-4 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-xl font-bold text-lg shadow-2xl shadow-purple-500/50 hover:shadow-purple-500/70 hover:scale-105 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-3 order-1 sm:order-2"
             >
-              {generating ? (
-                <>
-                  <div className="w-6 h-6 border-3 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Generating Schedules...
-                </>
-              ) : (
-                <>
-                  <Calendar className="w-6 h-6" />
-                  Generate Schedules
-                </>
-              )}
+              <Calendar className="w-6 h-6" />
+              Generate Schedules
             </button>
           </motion.div>
+
+          {/* Name modal before generating */}
+          {showNameModal && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="glass backdrop-blur-xl border border-purple-500/50 rounded-2xl p-6 w-full max-w-md shadow-2xl shadow-purple-500/20"
+              >
+                <h3 className="text-xl font-bold text-white mb-2">Generate Schedules</h3>
+                <p className="text-gray-300 mb-4">Schedules will be generated now. Please enter your name.</p>
+                <input
+                  type="text"
+                  value={studentNameInput}
+                  onChange={(e) => { setStudentNameInput(e.target.value); setNameModalError(null); }}
+                  placeholder="Your name"
+                  className="w-full px-4 py-3 rounded-lg bg-white/5 border border-white/20 text-white placeholder-gray-500 focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/50 outline-none mb-2"
+                  required
+                />
+                {nameModalError && <p className="text-red-400 text-sm mb-2">{nameModalError}</p>}
+                <div className="flex gap-3 mt-4">
+                  <button
+                    onClick={() => { setShowNameModal(false); setStudentNameInput(""); setNameModalError(null); }}
+                    className="flex-1 px-4 py-2 glass border border-white/10 rounded-lg font-semibold text-white hover:border-gray-500/50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleGenerateSchedules}
+                    className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-lg font-semibold shadow-lg shadow-purple-500/50 hover:scale-[1.02] transition-all"
+                  >
+                    Okay
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
 
           {/* Selection Summary */}
           {selectedCourses.length > 0 && (

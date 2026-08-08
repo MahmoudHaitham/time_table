@@ -8,7 +8,7 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -71,3 +71,22 @@ jobs:
           echo "✅ Backend image: mabouellais/timetable-backend:${{ github.ref_name }}"
           echo "✅ Frontend image: mabouellais/timetable-frontend:${{ github.ref_name }}"
           echo "✅ Commit SHA: ${{ github.sha }}"
+
+  deploy-vps:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: vars.VPS_DEPLOY_ENABLED == 'true'
+
+    steps:
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            APP_DIR="${{ vars.VPS_APP_DIR }}"
+            APP_DIR="${APP_DIR:-$HOME/portfolio}"
+            cd "$APP_DIR"
+            git pull origin deploy 2>/dev/null || true
+            bash cicd/deployment/05-deploy-app.sh

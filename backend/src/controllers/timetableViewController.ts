@@ -11,6 +11,7 @@ import { Session, Day } from "../entities/Session";
 import { ScheduleCache } from "../entities/ScheduleCache";
 import { ScheduleTemplate } from "../entities/ScheduleTemplate";
 import { User } from "../entities/User";
+import { saveGenerationLog } from "./generationLogController";
 import { cache, cacheKeys, CACHE_TTL } from "../utils/cache";
 import * as crypto from "crypto";
 import { encodeTermId, decodeTermToken } from "../utils/termToken";
@@ -954,19 +955,26 @@ export const getElectiveCourses = async (req: Request, res: Response) => {
 
     const electiveCourses = Array.from(electiveCoursesMap.values());
 
+    // For each elective, mark if it is closed in ALL classes (so student cannot select it)
+    const coursesWithClosedFlag = electiveCourses.map((course) => {
+      const classCoursesForCourse = classCourses.filter(cc => cc.course.id === course.id);
+      const closedInAllClasses = classCoursesForCourse.length > 0 && classCoursesForCourse.every(cc => cc.closed);
+      return { ...course, closedInAllClasses };
+    });
+
     // Calculate maximum number of electives (handles corner case internally)
     const electiveDistributionInfo = await getElectiveDistributionInfo(term.id, electiveSystemType);
 
     // Cache the result (include maxElectives in cache)
     const cacheData = {
-      courses: electiveCourses,
+      courses: coursesWithClosedFlag,
       maxElectives: electiveDistributionInfo.maxElectives,
     };
     cache.set(cacheKey, cacheData, CACHE_TTL.COURSES);
 
     return res.json({
       success: true,
-      data: electiveCourses,
+      data: coursesWithClosedFlag,
       maxElectives: electiveDistributionInfo.maxElectives,
     });
   } catch (error) {
@@ -1025,14 +1033,36 @@ export const getInstructorsForTerm = async (req: Request, res: Response) => {
       });
     }
 
+    // Get campusTrack from query parameter (for Term 4 System 140)
+    const campusTrack = req.query.campusTrack as string | undefined;
+    const validCampusTracks = ["northampton", "normal"];
+    const parsedCampusTrack: "northampton" | "normal" | null = 
+      campusTrack && validCampusTracks.includes(campusTrack.toLowerCase())
+        ? (campusTrack.toLowerCase() as "northampton" | "normal")
+        : null;
+
     // Get all classes for this term and system
     const classRepo = AppDataSource.getRepository(Class);
-    const classes = await classRepo.find({
+    let classes = await classRepo.find({
       where: { 
         term_id: term.id,
         system_type: systemType,
       },
     });
+
+    // Filter classes by campusTrack if provided (Term 4 System 140)
+    if (parsedCampusTrack) {
+      const { isNorthamptonClass } = await import("../utils/preferencesHash");
+      const totalClassesBeforeFilter = classes.length;
+      
+      if (parsedCampusTrack === "northampton") {
+        classes = classes.filter(c => isNorthamptonClass(c.class_code));
+        console.log(`[getInstructorsForTerm] 🏫 NORTHAMPTON track: Filtered to ${classes.length}/${totalClassesBeforeFilter} NORTHAMPTON classes`);
+      } else if (parsedCampusTrack === "normal") {
+        classes = classes.filter(c => !isNorthamptonClass(c.class_code));
+        console.log(`[getInstructorsForTerm] 🏠 Normal track: Filtered to ${classes.length}/${totalClassesBeforeFilter} normal classes`);
+      }
+    }
 
     // Get all class courses for these classes
     const classCourseRepo = AppDataSource.getRepository(ClassCourse);
@@ -1102,18 +1132,20 @@ export const getInstructorsForTerm = async (req: Request, res: Response) => {
  */
 export const getInstructorsForCourses = async (req: Request, res: Response) => {
   try {
-    const systemType = req.query.systemType ? parseInt(req.query.systemType as string) : null;
-    
-    // Get course IDs from query parameter (comma-separated)
+    const systemTypeParam = req.query.systemType as string | undefined;
+    const systemType = systemTypeParam ? parseInt(systemTypeParam) : null;
+    const allSystems = req.query.allSystems === "true" || req.query.allSystems === "1";
+
     const courseIdsParam = req.query.courseIds as string | undefined;
     const courseIds: number[] = courseIdsParam
       ? courseIdsParam.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id))
       : [];
-    
-    if (!systemType || ![140, 160, 180].includes(systemType)) {
+
+    const useAllSystems = allSystems || !systemType;
+    if (!useAllSystems && ![140, 160, 180].includes(systemType!)) {
       return res.status(400).json({
         success: false,
-        message: "Valid systemType (140, 160, or 180) is required",
+        message: "Valid systemType (140, 160, or 180) or allSystems=true is required",
       });
     }
 
@@ -1124,21 +1156,19 @@ export const getInstructorsForCourses = async (req: Request, res: Response) => {
       });
     }
 
-    console.log(`[getInstructorsForCourses] Getting instructors for ${courseIds.length} course(s): ${courseIds.join(", ")}`);
+    console.log(`[getInstructorsForCourses] Getting instructors for ${courseIds.length} course(s): ${courseIds.join(", ")}${useAllSystems ? " (all systems)" : ""}`);
 
-    // Get all published terms
     const termRepo = AppDataSource.getRepository(Term);
     const terms = await termRepo.find({
       where: { is_published: true },
     });
 
-    // Get all classes for all terms with the specified system type
     const classRepo = AppDataSource.getRepository(Class);
     const termIds = terms.map(t => t.id);
     const classes = termIds.length > 0 ? await classRepo.find({
-      where: { 
+      where: {
         term_id: In(termIds),
-        system_type: systemType,
+        system_type: useAllSystems ? In([140, 160, 180]) : (systemType as any),
       },
     }) : [];
 
@@ -1470,20 +1500,25 @@ export const getAdminTermCourses = async (req: Request, res: Response) => {
   }
 };
 
+const ALL_SYSTEMS = [140, 160, 180] as const;
+
 export const getAllCoursesForOther = async (req: Request, res: Response) => {
   try {
-    // Get systemType from query parameter (required)
     const systemType = req.query.systemType ? parseInt(req.query.systemType as string) : null;
-    
-    if (!systemType || ![140, 160, 180].includes(systemType)) {
+    const allSystems = req.query.allSystems === "true" || req.query.allSystems === "1";
+
+    const useAllSystems = allSystems;
+    if (!useAllSystems && (!systemType || !ALL_SYSTEMS.includes(systemType as 140 | 160 | 180))) {
       return res.status(400).json({
         success: false,
-        message: "Valid systemType (140, 160, or 180) is required",
+        message: "Valid systemType (140, 160, or 180) or allSystems=true is required",
       });
     }
 
-    // Check cache first
-    const cacheKey = `all_courses_other_section_system_${systemType}`;
+    const effectiveSystems = useAllSystems ? [...ALL_SYSTEMS] : [systemType!];
+    const cacheKey = useAllSystems
+      ? "all_courses_other_section_all_systems"
+      : `all_courses_other_section_system_${systemType}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       return res.json({
@@ -1510,18 +1545,17 @@ export const getAllCoursesForOther = async (req: Request, res: Response) => {
       });
     }
 
-    // Get all classes from all published terms filtered by system_type
     const classRepo = AppDataSource.getRepository(Class);
     const termIds = terms.map(t => t.id);
     const allClasses = termIds.length > 0 ? await classRepo.find({
-      where: { 
+      where: {
         term_id: In(termIds),
-        system_type: systemType,
+        system_type: useAllSystems ? In(effectiveSystems) : (systemType as any),
       },
       relations: ["term"],
     }) : [];
 
-    console.log(`[getAllCoursesForOther] Found ${allClasses.length} classes across ${terms.length} terms for system ${systemType}`);
+    console.log(`[getAllCoursesForOther] Found ${allClasses.length} classes across ${terms.length} terms${useAllSystems ? " (all systems)" : ` for system ${systemType}`}`);
 
     // Create a map of term_id to term_number for quick lookup
     const termMap = new Map<number, string>();
@@ -1537,26 +1571,28 @@ export const getAllCoursesForOther = async (req: Request, res: Response) => {
       relations: ["course", "class"],
     }) : [];
 
-    console.log(`[getAllCoursesForOther] Found ${allClassCourses.length} class-course assignments for system ${systemType}`);
+    console.log(`[getAllCoursesForOther] Found ${allClassCourses.length} class-course assignments${useAllSystems ? " (all systems)" : ` for system ${systemType}`}`);
 
-    // Group courses by term and type (core/elective)
-    // Create a map to store unique courses with their term information
+    // Group courses by term and type (core/elective); when allSystems, also by system_type so same course in different systems appears separately
     const coursesMap = new Map<string, {
       course: Course;
       term_number: string;
       term_id: number;
+      system_type: number;
       classes: Array<{ id: number; class_code: string }>;
     }>();
 
     allClassCourses.forEach(cc => {
-      const courseKey = `${cc.course.id}_${cc.class.term_id}`;
+      const systemTypeVal = (cc.class as any).system_type ?? (systemType ?? 140);
+      const courseKey = useAllSystems ? `${cc.course.id}_${cc.class.term_id}_${systemTypeVal}` : `${cc.course.id}_${cc.class.term_id}`;
       const termNumber = termMap.get(cc.class.term_id) || "Unknown";
-      
+
       if (!coursesMap.has(courseKey)) {
         coursesMap.set(courseKey, {
           course: cc.course,
           term_number: termNumber,
           term_id: cc.class.term_id,
+          system_type: systemTypeVal,
           classes: [],
         });
       }
@@ -1573,16 +1609,15 @@ export const getAllCoursesForOther = async (req: Request, res: Response) => {
     const coreCourses: any[] = [];
     const electiveCourses: any[] = [];
 
-    coursesMap.forEach((data, key) => {
-      // Courses are already filtered through classes by system_type
-      // No need to check course.system_type since classes are filtered
+    coursesMap.forEach((data) => {
       const courseData = {
         ...data.course,
         term_number: data.term_number,
         term_id: data.term_id,
+        system_type: data.system_type,
         classes: data.classes,
       };
-      
+
       if (data.course.is_elective) {
         electiveCourses.push(courseData);
       } else {
@@ -1601,14 +1636,15 @@ export const getAllCoursesForOther = async (req: Request, res: Response) => {
     coreCourses.sort(sortCourses);
     electiveCourses.sort(sortCourses);
 
-    console.log(`[getAllCoursesForOther] Returning ${coreCourses.length} core courses and ${electiveCourses.length} elective courses for system ${systemType}`);
+    console.log(`[getAllCoursesForOther] Returning ${coreCourses.length} core courses and ${electiveCourses.length} elective courses${useAllSystems ? " (all systems)" : ` for system ${systemType}`}`);
 
-    // Calculate maximum electives across all terms (use the highest value)
     let maxElectivesAcrossTerms = 0;
     for (const term of terms) {
-      const maxElectivesForTerm = await getMaxElectivesForTerm(term.id, systemType);
-      if (maxElectivesForTerm > maxElectivesAcrossTerms) {
-        maxElectivesAcrossTerms = maxElectivesForTerm;
+      for (const sys of effectiveSystems) {
+        const maxElectivesForTerm = await getMaxElectivesForTerm(term.id, sys);
+        if (maxElectivesForTerm > maxElectivesAcrossTerms) {
+          maxElectivesAcrossTerms = maxElectivesForTerm;
+        }
       }
     }
 
@@ -1647,7 +1683,7 @@ export const getAllCoursesForOther = async (req: Request, res: Response) => {
  */
 export const generateOtherSectionSchedules = async (req: Request, res: Response) => {
   try {
-    const { selectedCourseIds, excludedDays, systemType, preferredInstructors } = req.body;
+    const { selectedCourseIds, excludedDays, systemType, allSystems, preferredInstructors, studentName } = req.body;
 
     if (!Array.isArray(selectedCourseIds) || selectedCourseIds.length === 0) {
       return res.status(400).json({
@@ -1682,25 +1718,28 @@ export const generateOtherSectionSchedules = async (req: Request, res: Response)
       console.log(`[generateOtherSectionSchedules] No preferred instructors specified`);
     }
 
-    if (!systemType || ![140, 160, 180].includes(systemType)) {
+    const useAllSystems = !!allSystems || !systemType || ![140, 160, 180].includes(Number(systemType));
+    const effectiveSystems = useAllSystems ? [140, 160, 180] : [Number(systemType)];
+
+    if (!useAllSystems && (!systemType || ![140, 160, 180].includes(Number(systemType)))) {
       return res.status(400).json({
         success: false,
-        message: "Valid systemType (140, 160, or 180) is required",
+        message: "Valid systemType (140, 160, or 180) or allSystems: true is required",
       });
     }
 
-    // Get all published terms first to calculate max electives
     const termRepo = AppDataSource.getRepository(Term);
     const terms = await termRepo.find({
       where: { is_published: true },
     });
 
-    // Calculate maximum electives across all terms (use the highest value)
     let maxElectivesAcrossTerms = 0;
     for (const term of terms) {
-      const maxElectivesForTerm = await getMaxElectivesForTerm(term.id, systemType);
-      if (maxElectivesForTerm > maxElectivesAcrossTerms) {
-        maxElectivesAcrossTerms = maxElectivesForTerm;
+      for (const sys of effectiveSystems) {
+        const maxElectivesForTerm = await getMaxElectivesForTerm(term.id, sys);
+        if (maxElectivesForTerm > maxElectivesAcrossTerms) {
+          maxElectivesAcrossTerms = maxElectivesForTerm;
+        }
       }
     }
 
@@ -1721,13 +1760,12 @@ export const generateOtherSectionSchedules = async (req: Request, res: Response)
     // Courses are filtered through classes by system_type, so validation is done at class level
     // No need to validate course.system_type since courses don't have system_type
 
-    // Get all classes from all published terms filtered by system_type
     const classRepo = AppDataSource.getRepository(Class);
     const termIds = terms.map(t => t.id);
     const allClasses = termIds.length > 0 ? await classRepo.find({
-      where: { 
+      where: {
         term_id: In(termIds),
-        system_type: systemType,
+        system_type: useAllSystems ? In(effectiveSystems) : (Number(systemType) as any),
       },
     }) : [];
 
@@ -1743,6 +1781,18 @@ export const generateOtherSectionSchedules = async (req: Request, res: Response)
     }) : [];
 
     if (classCourses.length === 0) {
+      if (studentName && typeof studentName === "string" && studentName.trim()) {
+        const electiveNames = courses.filter((c: Course) => c.is_elective).map((c: Course) => c.name).join(", ") || null;
+        const coreNames = courses.filter((c: Course) => !c.is_elective).map((c: Course) => c.name).join(", ") || null;
+        await saveGenerationLog({
+          user_name: studentName.trim(),
+          flow_type: "other",
+          term_display: "Other Section",
+          electives_selected: electiveNames,
+          core_selected: coreNames,
+          result_summary: "0 schedules (no classes found for selected courses)",
+        });
+      }
       return res.json({
         success: true,
         data: [],
@@ -1827,6 +1877,18 @@ export const generateOtherSectionSchedules = async (req: Request, res: Response)
     const topSchedules = schedules.slice(0, 100);
 
     if (topSchedules.length === 0) {
+      if (studentName && typeof studentName === "string" && studentName.trim()) {
+        const electiveNames = courses.filter((c: Course) => c.is_elective).map((c: Course) => c.name).join(", ") || null;
+        const coreNames = courses.filter((c: Course) => !c.is_elective).map((c: Course) => c.name).join(", ") || null;
+        await saveGenerationLog({
+          user_name: studentName.trim(),
+          flow_type: "other",
+          term_display: "Other Section",
+          electives_selected: electiveNames,
+          core_selected: coreNames,
+          result_summary: "0 schedules (no valid schedules could be generated)",
+        });
+      }
       return res.json({
         success: true,
         data: [],
@@ -1834,6 +1896,19 @@ export const generateOtherSectionSchedules = async (req: Request, res: Response)
       });
     }
 
+    if (studentName && typeof studentName === "string" && studentName.trim()) {
+      const electiveNames = courses.filter((c: Course) => c.is_elective).map((c: Course) => c.name).join(", ") || null;
+      const coreNames = courses.filter((c: Course) => !c.is_elective).map((c: Course) => c.name).join(", ") || null;
+      await saveGenerationLog({
+        user_name: studentName.trim(),
+        flow_type: "other",
+        term_display: "Other Section",
+        electives_selected: electiveNames,
+        core_selected: coreNames,
+        result_summary: `${topSchedules.length} schedule(s) generated`,
+        result_json: { count: topSchedules.length },
+      });
+    }
     return res.json({
       success: true,
       data: topSchedules,
@@ -1847,12 +1922,53 @@ export const generateOtherSectionSchedules = async (req: Request, res: Response)
   }
 };
 
+/** Helper: save generation log for system flow when studentName is provided */
+async function saveSystemGenerationLogIfRequested(
+  req: Request,
+  parsedTermId: number,
+  scheduleSystemType: number,
+  electiveCourseIds: number[] | undefined,
+  excludedCoreCourseIds: number[] | undefined,
+  scheduleCount: number,
+  resultMessage?: string
+): Promise<void> {
+  const studentName = req.body.studentName;
+  if (!studentName || typeof studentName !== "string" || !studentName.trim()) return;
+  try {
+    const termRepo = AppDataSource.getRepository(Term);
+    const term = await termRepo.findOne({ where: { id: parsedTermId } });
+    const termDisplay = term ? `System ${scheduleSystemType} - Term ${term.term_number}` : `System ${scheduleSystemType} - Term ${parsedTermId}`;
+    const courseRepo = AppDataSource.getRepository(Course);
+    let electivesSelected: string | null = null;
+    let coreSelected: string | null = "All core courses included";
+    if (electiveCourseIds && electiveCourseIds.length > 0) {
+      const electives = await courseRepo.find({ where: { id: In(electiveCourseIds) } });
+      electivesSelected = electives.map((c: Course) => c.name).join(", ");
+    }
+    if (excludedCoreCourseIds && excludedCoreCourseIds.length > 0) {
+      const excluded = await courseRepo.find({ where: { id: In(excludedCoreCourseIds) } });
+      coreSelected = "Excluded: " + excluded.map((c: Course) => c.name).join(", ");
+    }
+    await saveGenerationLog({
+      user_name: studentName.trim(),
+      flow_type: "system",
+      term_display: termDisplay,
+      electives_selected: electivesSelected,
+      core_selected: coreSelected,
+      result_summary: resultMessage ?? `${scheduleCount} schedule(s) generated`,
+      result_json: scheduleCount >= 0 ? { count: scheduleCount } : null,
+    });
+  } catch (e) {
+    console.warn("[GenerationLog] saveSystemGenerationLogIfRequested error:", (e as Error)?.message);
+  }
+}
+
 /**
  * Generate timetable schedules based on student preferences
  */
 export const generateTimetableSchedules = async (req: Request, res: Response) => {
   try {
-    const { termId, excludedDays, electiveCourseIds, excludedCoreCourseIds, preferredInstructors } = req.body;
+    const { termId, excludedDays, electiveCourseIds, excludedCoreCourseIds, preferredInstructors, campusTrack, studentName } = req.body;
 
     // Handle "Other" section - redirect to separate function
     if (!termId || termId === "other" || termId === "null") {
@@ -1932,6 +2048,14 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
       });
     }
 
+    // Validate campusTrack for Term 4 System 140 (NORTHAMPTON separation)
+    // campusTrack can be "northampton" or "normal"
+    const validCampusTracks = ["northampton", "normal"];
+    const parsedCampusTrack: "northampton" | "normal" | null = 
+      campusTrack && typeof campusTrack === "string" && validCampusTracks.includes(campusTrack.toLowerCase())
+        ? (campusTrack.toLowerCase() as "northampton" | "normal")
+        : null;
+
     // Calculate maximum electives for this term based on classes
     const maxElectives = await getMaxElectivesForTerm(parsedTermId, scheduleSystemType);
 
@@ -1965,15 +2089,82 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
     const electiveIdsHash = electiveIdsJson ? crypto.createHash("md5").update(electiveIdsJson).digest("hex") : null;
     const excludedCoreIdsHash = excludedCoreIdsJson ? crypto.createHash("md5").update(excludedCoreIdsJson).digest("hex") : null;
 
-    // Check in-memory cache first
+    // Fetch term and classes early so we can include closedClassCourseIds in template hash and cache key
+    const { requiresCampusTrackSeparation: reqCampusTrackSep, isNorthamptonClass: reqIsNorthampton } = await import("../utils/preferencesHash");
+    const termRepoEarly = AppDataSource.getRepository(Term);
+    const termEarly = await termRepoEarly.findOne({ where: { id: parsedTermId, is_published: true } });
+    if (!termEarly) {
+      return res.status(404).json({ success: false, message: "Published term not found" });
+    }
+    const classRepoEarly = AppDataSource.getRepository(Class);
+    let classesEarly = await classRepoEarly.find({
+      where: { term_id: termEarly.id, system_type: scheduleSystemType },
+      order: { class_code: "ASC" },
+    });
+    const termNumEarly = parseInt(termEarly.term_number);
+    if (reqCampusTrackSep(termNumEarly, scheduleSystemType) && parsedCampusTrack) {
+      if (parsedCampusTrack === "northampton") classesEarly = classesEarly.filter(c => reqIsNorthampton(c.class_code));
+      else if (parsedCampusTrack === "normal") classesEarly = classesEarly.filter(c => !reqIsNorthampton(c.class_code));
+    }
+    const classIdsEarly = classesEarly.map(c => c.id);
+    let closedClassCourseIds: number[] = [];
+    if (classIdsEarly.length > 0) {
+      const classCourseRepoEarly = AppDataSource.getRepository(ClassCourse);
+      const closedRows = await classCourseRepoEarly.find({
+        where: { class_id: In(classIdsEarly), closed: true },
+        select: ["id"],
+      });
+      closedClassCourseIds = closedRows.map(r => r.id).sort((a, b) => a - b);
+    }
+    if (closedClassCourseIds.length > 0) {
+      console.log(`[generateTimetableSchedules] Closed class-course IDs (excluded from generation): ${closedClassCourseIds.join(", ")}`);
+    }
+
+    // Reject if student selected an elective that is closed in ALL classes for this term
+    if (sortedElectiveIds && sortedElectiveIds.length > 0 && classIdsEarly.length > 0) {
+      const classCourseRepoForValidation = AppDataSource.getRepository(ClassCourse);
+      const allCCsForTerm = await classCourseRepoForValidation.find({
+        where: { class_id: In(classIdsEarly) },
+        select: ["id", "course_id"],
+      });
+      const courseIdToCCIds = new Map<number, number[]>();
+      for (const cc of allCCsForTerm) {
+        if (!courseIdToCCIds.has(cc.course_id)) courseIdToCCIds.set(cc.course_id, []);
+        courseIdToCCIds.get(cc.course_id)!.push(cc.id);
+      }
+      const closedCourseIds = [...courseIdToCCIds.entries()]
+        .filter(([, ids]) => ids.every(id => closedClassCourseIds.includes(id)))
+        .map(([courseId]) => courseId);
+      const selectedClosedElectiveIds = sortedElectiveIds.filter(eid => closedCourseIds.includes(eid));
+      if (selectedClosedElectiveIds.length > 0) {
+        const courseRepoForNames = AppDataSource.getRepository(Course);
+        const closedCourses = await courseRepoForNames.find({
+          where: { id: In(selectedClosedElectiveIds) },
+          select: ["id", "code", "name"],
+        });
+        const namesList = closedCourses.map(c => `"${c.name}" (${c.code})`).join(", ");
+        const message = closedCourses.length === 1
+          ? `The elective ${namesList} is closed for this term and cannot be selected.`
+          : `The following electives are closed for this term and cannot be selected: ${namesList}.`;
+        return res.status(400).json({
+          success: false,
+          message,
+        });
+      }
+    }
+
+    // In-memory cache key must include closed state so cache is invalid when admin closes/opens
     const excludedDaysKey = sortedExcludedDays.join(",");
     const electiveIdsKey = sortedElectiveIds ? sortedElectiveIds.join(",") : "none";
     const excludedCoreIdsKey = sortedExcludedCoreIds ? sortedExcludedCoreIds.join(",") : "none";
     const preferredInstructorsKey = preferredInstructorNames.length > 0 ? preferredInstructorNames.sort().join(",") : "none";
-    const cacheKey = cacheKeys.schedule(parsedTermId, excludedDaysKey, electiveIdsKey, excludedCoreIdsKey) + `_system_${scheduleSystemType}_inst_${preferredInstructorsKey}`;
+    const campusTrackKey = parsedCampusTrack || "none";
+    const closedKey = closedClassCourseIds.length > 0 ? closedClassCourseIds.join(",") : "none";
+    const cacheKey = cacheKeys.schedule(parsedTermId, excludedDaysKey, electiveIdsKey, excludedCoreIdsKey) + `_system_${scheduleSystemType}_inst_${preferredInstructorsKey}_track_${campusTrackKey}_closed_${closedKey}`;
     const cached = cache.get(cacheKey);
     if (cached) {
       console.log(`[generateTimetableSchedules] ✅ In-memory cache hit for term ${parsedTermId}`);
+      await saveSystemGenerationLogIfRequested(req, parsedTermId, scheduleSystemType, electiveCourseIds, excludedCoreCourseIds, Array.isArray(cached) ? cached.length : 0, `${Array.isArray(cached) ? cached.length : 0} schedule(s) generated (cached)`);
       return res.json({
         success: true,
         data: cached,
@@ -1981,32 +2172,61 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
       });
     }
 
-    // NEW APPROACH (Option B): Use BASE hash for template lookup
-    // Hash only includes: term_id, system_type, electives
-    // Excluded days, excluded core, and instructors are RUNTIME FILTERS
-    console.log(`[generateTimetableSchedules] 🔍 Generating base template hash...`);
+    // HIERARCHICAL TEMPLATE SYSTEM:
+    // - PARENT TEMPLATE: Contains ALL combinations for (term, system, electives) - NO excluded core courses
+    // - CHILD TEMPLATE: Derived from parent by filtering out excluded core courses
+    // 
+    // LOOKUP STRATEGY:
+    // 1. If excludedCore is empty → Use parent template directly
+    // 2. If excludedCore exists → Look for child template with matching hash
+    //    - If child exists → Use child template
+    //    - If child NOT exists → Find parent → Filter → Save as new child
+    console.log(`[generateTimetableSchedules] 🔍 Analyzing template request...`);
     const templateCheckStart = Date.now();
     
     // Import hash and filter utilities
-    const { generateBaseTemplateHash, applyFiltersAndRescore } = await import("../utils/preferencesHash");
+    const { 
+      generateParentTemplateHash, 
+      generateChildTemplateHash, 
+      generateChildElectiveCombinationHash,
+      analyzeTemplateRequest, 
+      applyFiltersAndRescore,
+      deriveChildTemplateFromParent,
+      requiresCampusTrackSeparation,
+      isNorthamptonClass
+    } = await import("../utils/preferencesHash");
     
-    // Generate BASE hash (term, system, electives, excludedCore - NOT excluded days/instructors)
-    // NOTE: excludedCoreCourseIds is in hash because it changes which courses are generated
-    //       excludedDays and preferredInstructors are NOT in hash (scoring only)
-    const baseTemplateHash = generateBaseTemplateHash({
+    // Analyze the request to determine if we need parent or child template
+    // Include campusTrack and closedClassCourseIds so template is unique per closure state
+    const templateAnalysis = analyzeTemplateRequest({
       termId: parsedTermId,
       systemType: scheduleSystemType,
       electiveCourseIds: sortedElectiveIds,
       excludedCoreCourseIds: sortedExcludedCoreIds,
+      campusTrack: parsedCampusTrack,
+      closedClassCourseIds: closedClassCourseIds.length > 0 ? closedClassCourseIds : null,
     });
     
-    console.log(`[generateTimetableSchedules] Base template hash: ${baseTemplateHash}`);
+    const parentHash = templateAnalysis.parentHash;
+    const childHash = templateAnalysis.childHash;
+    const needsChildTemplate = templateAnalysis.needsChild;
+    
+    // For backward compatibility - use parent hash if no child needed, otherwise use child hash
+    const baseTemplateHash = needsChildTemplate ? childHash! : parentHash;
+    
+    console.log(`[generateTimetableSchedules] Template analysis:`);
+    console.log(`  Parent hash: ${parentHash}`);
+    console.log(`  Child hash: ${childHash || "N/A (no excluded core)"}`);
+    console.log(`  Needs child template: ${needsChildTemplate}`);
+    console.log(`  Active lookup hash: ${baseTemplateHash}`);
     console.log(`  Hash includes: term=${parsedTermId}, system=${scheduleSystemType}, electives=${sortedElectiveIds?.join(",") || "none"}, excludedCore=${sortedExcludedCoreIds?.join(",") || "none"}`);
     console.log(`  Runtime filters: excludedDays=${sortedExcludedDays.join(",") || "none"}, instructors=${preferredInstructorNames.join(",") || "none"}`);
 
-    // Check for existing BASE template (not filtered by preferences)
+    // HIERARCHICAL TEMPLATE LOOKUP
     const scheduleTemplateRepo = AppDataSource.getRepository(ScheduleTemplate);
     let existingTemplate: ScheduleTemplate | null = null;
+    let parentTemplate: ScheduleTemplate | null = null;
+    let derivedFromParent = false;
     
     // Compute elective_combination_hash for backward compatibility check
     const electiveIdsJsonForCheck = sortedElectiveIds ? JSON.stringify(sortedElectiveIds) : null;
@@ -2015,36 +2235,85 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
       : null;
     
     try {
-      // Single optimized query: check by base hash OR old composite key
-      const findPromise = AppDataSource.query(
-        `SELECT id, schedule_count, preferences_hash, base_schedules 
-         FROM schedule_templates 
-         WHERE preferences_hash = $1 
-            OR (term_id = $2 AND system_type = $3 AND elective_combination_hash = $4)
-         LIMIT 1`,
-        [baseTemplateHash, parsedTermId, scheduleSystemType, electiveCombinationHashForCheck]
-      );
-      
-      const timeoutPromise = new Promise<null>((_, reject) => 
-        setTimeout(() => reject(new Error("Template check timeout")), 5000)
-      );
-      
-      const result = await Promise.race([findPromise, timeoutPromise]) as any[];
-      
-      if (result && result.length > 0) {
-        existingTemplate = result[0] as ScheduleTemplate;
+      if (needsChildTemplate) {
+        // STEP 1: Look for CHILD template first (exact match for excludedCore)
+        console.log(`[generateTimetableSchedules] Looking for CHILD template with hash: ${childHash}`);
+        const childFindPromise = AppDataSource.query(
+          `SELECT id, schedule_count, preferences_hash, parent_hash, parent_template_id, is_parent, base_schedules 
+           FROM schedule_templates 
+           WHERE preferences_hash = $1
+           LIMIT 1`,
+          [childHash]
+        );
         
-        // If found by old method, update with new base hash
-        if (existingTemplate.preferences_hash !== baseTemplateHash) {
-          console.log(`[generateTimetableSchedules] ✅ Found by OLD method (ID: ${existingTemplate.id}), updating hash...`);
-          setImmediate(async () => {
-            try {
-              await AppDataSource.query(
-                `UPDATE schedule_templates SET preferences_hash = $1 WHERE id = $2`,
-                [baseTemplateHash, existingTemplate!.id]
-              );
-            } catch (e) { /* ignore */ }
-          });
+        const childTimeoutPromise = new Promise<null>((_, reject) => 
+          setTimeout(() => reject(new Error("Child template check timeout")), 5000)
+        );
+        
+        const childResult = await Promise.race([childFindPromise, childTimeoutPromise]) as any[];
+        
+        if (childResult && childResult.length > 0) {
+          existingTemplate = childResult[0] as ScheduleTemplate;
+          console.log(`[generateTimetableSchedules] ✅ Found CHILD template (ID: ${existingTemplate.id}) with ${existingTemplate.schedule_count} schedules`);
+        } else {
+          // STEP 2: Child not found - look for PARENT template to derive from
+          console.log(`[generateTimetableSchedules] Child template not found. Looking for PARENT template with hash: ${parentHash}`);
+          const parentFindPromise = AppDataSource.query(
+            `SELECT id, schedule_count, preferences_hash, parent_hash, parent_template_id, is_parent, base_schedules 
+             FROM schedule_templates 
+             WHERE preferences_hash = $1 OR parent_hash = $1
+             LIMIT 1`,
+            [parentHash]
+          );
+          
+          const parentTimeoutPromise = new Promise<null>((_, reject) => 
+            setTimeout(() => reject(new Error("Parent template check timeout")), 5000)
+          );
+          
+          const parentResult = await Promise.race([parentFindPromise, parentTimeoutPromise]) as any[];
+          
+          if (parentResult && parentResult.length > 0) {
+            parentTemplate = parentResult[0] as ScheduleTemplate;
+            console.log(`[generateTimetableSchedules] ✅ Found PARENT template (ID: ${parentTemplate.id}) with ${parentTemplate.schedule_count} schedules`);
+            console.log(`[generateTimetableSchedules] 🔄 Will DERIVE child template from parent (filter by excludedCore: ${sortedExcludedCoreIds?.join(",") || "none"})`);
+            derivedFromParent = true;
+          } else {
+            console.log(`[generateTimetableSchedules] ⚠️ Neither child nor parent template found - will generate new PARENT template`);
+          }
+        }
+      } else {
+        // NO excludedCore - look for PARENT template directly
+        console.log(`[generateTimetableSchedules] Looking for PARENT template (no excludedCore) with hash: ${parentHash}`);
+        const findPromise = AppDataSource.query(
+          `SELECT id, schedule_count, preferences_hash, parent_hash, parent_template_id, is_parent, base_schedules 
+           FROM schedule_templates 
+           WHERE preferences_hash = $1 OR parent_hash = $1
+              OR (term_id = $2 AND system_type = $3 AND elective_combination_hash = $4)
+           LIMIT 1`,
+          [parentHash, parsedTermId, scheduleSystemType, electiveCombinationHashForCheck]
+        );
+        
+        const timeoutPromise = new Promise<null>((_, reject) => 
+          setTimeout(() => reject(new Error("Template check timeout")), 5000)
+        );
+        
+        const result = await Promise.race([findPromise, timeoutPromise]) as any[];
+        
+        if (result && result.length > 0) {
+          existingTemplate = result[0] as ScheduleTemplate;
+          
+          // Update hash if found by old method
+          if (existingTemplate.preferences_hash !== parentHash && existingTemplate.parent_hash !== parentHash) {
+            console.log(`[generateTimetableSchedules] ✅ Found by OLD method (ID: ${existingTemplate.id}), updating hash...`);
+            setImmediate(async () => {
+              try {
+                await AppDataSource.query(
+                  `UPDATE schedule_templates SET preferences_hash = $1, parent_hash = $1, is_parent = true WHERE id = $2`,
+                  [parentHash, existingTemplate!.id]
+                );
+              } catch (e) { /* ignore */ }
+            });
+          }
         }
       }
     } catch (error: any) {
@@ -2052,18 +2321,19 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
         console.warn(`[generateTimetableSchedules] Template check timed out, continuing...`);
       }
       existingTemplate = null;
+      parentTemplate = null;
     }
 
     const templateCheckTime = Date.now() - templateCheckStart;
     console.log(`[generateTimetableSchedules] Template check: ${templateCheckTime}ms`);
 
-    // If base template exists, APPLY FILTERS and return (no generation needed!)
+    // CASE 1: Child or Parent template EXISTS - apply filters and return
     if (existingTemplate) {
       const baseSchedules = existingTemplate.base_schedules || [];
       
       if (baseSchedules && baseSchedules.length > 0 && Array.isArray(baseSchedules)) {
-        console.log(`[generateTimetableSchedules] ✅ Base template found (ID: ${existingTemplate.id}) with ${baseSchedules.length} schedules`);
-        console.log(`[generateTimetableSchedules] 🔄 Applying filters at runtime...`);
+        console.log(`[generateTimetableSchedules] ✅ Template found (ID: ${existingTemplate.id}) with ${baseSchedules.length} schedules`);
+        console.log(`[generateTimetableSchedules] 🔄 Applying runtime filters...`);
         
         const filterStart = Date.now();
         
@@ -2071,7 +2341,7 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
         const filteredSchedules = applyFiltersAndRescore(
           baseSchedules,
           sortedExcludedDays.length > 0 ? sortedExcludedDays : null,
-          sortedExcludedCoreIds,
+          null, // excludedCore already applied in template
           preferredInstructorNames.length > 0 ? preferredInstructorNames : null,
           50 // limit
         );
@@ -2091,6 +2361,7 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
 
         // Handle case where all schedules filtered out (only by excluded days scoring now)
         if (filteredSchedules.length === 0) {
+          await saveSystemGenerationLogIfRequested(req, parsedTermId, scheduleSystemType, electiveCourseIds, excludedCoreCourseIds, 0, "No schedules match (excluded days)");
           return res.json({
             success: true,
             data: [],
@@ -2102,7 +2373,7 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
         
         // Cache filtered result and return
         cache.set(cacheKey, filteredSchedules);
-        
+        await saveSystemGenerationLogIfRequested(req, parsedTermId, scheduleSystemType, electiveCourseIds, excludedCoreCourseIds, filteredSchedules.length, `${filteredSchedules.length} schedule(s) generated (from template)`);
         return res.json({
           success: true,
           data: filteredSchedules,
@@ -2117,11 +2388,122 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
         console.log(`[generateTimetableSchedules] ⚠️  Template found but empty, will generate...`);
       }
     }
+    
+    // CASE 2: PARENT template exists, need to DERIVE CHILD from it
+    if (derivedFromParent && parentTemplate) {
+      const parentSchedules = parentTemplate.base_schedules || [];
+      
+      if (parentSchedules && parentSchedules.length > 0 && Array.isArray(parentSchedules)) {
+        console.log(`[generateTimetableSchedules] 🔄 DERIVING child template from parent (${parentSchedules.length} parent schedules)`);
+        console.log(`[generateTimetableSchedules] Filtering out courses: ${sortedExcludedCoreIds?.join(",") || "none"}`);
+        
+        const deriveStart = Date.now();
+        
+        // DERIVE child schedules by filtering out excluded core courses
+        // This is the KEY optimization - we don't regenerate, just filter!
+        const childSchedules = deriveChildTemplateFromParent(
+          parentSchedules,
+          sortedExcludedCoreIds || []
+        );
+        
+        const deriveTime = Date.now() - deriveStart;
+        console.log(`[generateTimetableSchedules] ✅ Derived ${childSchedules.length} child schedules in ${deriveTime}ms`);
+        
+        // SAVE the derived child template to DB (synchronous - must persist before response)
+        try {
+          const childElectiveHash = generateChildElectiveCombinationHash(
+            sortedElectiveIds,
+            sortedExcludedCoreIds
+          );
+          const insertResult = await AppDataSource.query(
+            `INSERT INTO schedule_templates (
+              preferences_hash, parent_hash, parent_template_id, is_parent,
+              term_id, system_type, elective_course_ids, elective_combination_hash,
+              excluded_core_course_ids, campus_track, base_schedules, schedule_count, 
+              access_count, last_accessed_at, is_generating
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), false)
+            ON CONFLICT (preferences_hash) DO UPDATE SET
+              base_schedules = EXCLUDED.base_schedules,
+              schedule_count = EXCLUDED.schedule_count,
+              access_count = schedule_templates.access_count + 1,
+              last_accessed_at = NOW()
+            RETURNING id`,
+            [
+              childHash,
+              parentHash,
+              parentTemplate!.id,
+              false,
+              parsedTermId,
+              scheduleSystemType,
+              electiveIdsJsonForCheck,
+              childElectiveHash,
+              JSON.stringify(sortedExcludedCoreIds || []),
+              parsedCampusTrack,
+              JSON.stringify(childSchedules),
+              childSchedules.length,
+              1,
+            ]
+          );
+          if (insertResult && insertResult.length > 0) {
+            console.log(`[generateTimetableSchedules] 💾 SAVED child template to DB (ID: ${insertResult[0].id}) from parent ${parentTemplate!.id}, hash ${childHash}`);
+          }
+        } catch (saveError: any) {
+          console.error(`[generateTimetableSchedules] Failed to save child template to DB:`, saveError.message);
+        }
+        
+        // Apply runtime filters (excludedDays, preferredInstructors)
+        const filterStart = Date.now();
+        const filteredSchedules = applyFiltersAndRescore(
+          childSchedules,
+          sortedExcludedDays.length > 0 ? sortedExcludedDays : null,
+          null, // excludedCore already applied during derivation
+          preferredInstructorNames.length > 0 ? preferredInstructorNames : null,
+          50 // limit
+        );
+        const filterTime = Date.now() - filterStart;
+        
+        console.log(`[generateTimetableSchedules] ✅ Final filtering complete in ${filterTime}ms - ${filteredSchedules.length} schedules returned`);
+        
+        // Handle case where all schedules filtered out
+        if (filteredSchedules.length === 0) {
+          await saveSystemGenerationLogIfRequested(req, parsedTermId, scheduleSystemType, electiveCourseIds, excludedCoreCourseIds, 0, "No schedules match after excluding core");
+          return res.json({
+            success: true,
+            data: [],
+            message: "No schedules match your preferences after excluding the specified core courses.",
+            fromTemplate: true,
+            derivedFromParent: true,
+            parentTemplateId: parentTemplate.id,
+          });
+        }
+        
+        // Cache and return
+        cache.set(cacheKey, filteredSchedules);
+        await saveSystemGenerationLogIfRequested(req, parsedTermId, scheduleSystemType, electiveCourseIds, excludedCoreCourseIds, filteredSchedules.length, `${filteredSchedules.length} schedule(s) generated (derived from parent)`);
+        return res.json({
+          success: true,
+          data: filteredSchedules,
+          cached: false,
+          fromTemplate: true,
+          derivedFromParent: true,
+          parentTemplateId: parentTemplate.id,
+          childHash: childHash,
+          parentHash: parentHash,
+          deriveTime: deriveTime,
+          filterTime: filterTime,
+        });
+      } else {
+        console.log(`[generateTimetableSchedules] ⚠️  Parent template found but empty, will generate...`);
+        parentTemplate = null;
+        derivedFromParent = false;
+      }
+    }
 
-    // No base template found - use RESERVATION pattern to prevent race conditions
-    // Try to INSERT a placeholder first. If we succeed, we "own" this hash and can generate.
-    // If we fail (conflict), another request already owns it - wait and fetch their result.
-    console.log(`[generateTimetableSchedules] ⚠️  No base template found, attempting to RESERVE hash ${baseTemplateHash}...`);
+    // No template found - ALWAYS generate PARENT template (ALL combinations)
+    // This ensures we have the full set of schedules for future child derivations
+    // use RESERVATION pattern to prevent race conditions
+    console.log(`[generateTimetableSchedules] ⚠️  No template found, will generate PARENT template (ALL combinations)`);
+    console.log(`[generateTimetableSchedules] Attempting to RESERVE parent hash ${parentHash}...`);
     
     // Prepare placeholder data for reservation
     const sortedElectiveIdsForReserve = electiveCourseIds ? [...electiveCourseIds].sort((a, b) => a - b) : null;
@@ -2134,32 +2516,37 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
     let templateAlreadyExists = false;
     
     try {
-      // Try to INSERT a placeholder BASE template (no excluded days/instructors stored)
+      // Try to INSERT a placeholder PARENT template (NO excluded core courses)
       // ON CONFLICT DO NOTHING - if another request already reserved, this returns empty
       const reserveResult = await AppDataSource.query(
         `INSERT INTO schedule_templates (
-          preferences_hash, term_id, system_type, elective_course_ids, 
-          elective_combination_hash, base_schedules, schedule_count, access_count, last_accessed_at, is_generating
-        ) VALUES ($1, $2, $3, $4, $5, '[]'::jsonb, 0, 0, NOW(), true)
+          preferences_hash, parent_hash, parent_template_id, is_parent,
+          term_id, system_type, elective_course_ids, elective_combination_hash,
+          campus_track, base_schedules, schedule_count, access_count, last_accessed_at, is_generating
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, '[]'::jsonb, 0, 0, NOW(), true)
         ON CONFLICT (preferences_hash) DO NOTHING
         RETURNING id`,
         [
-          baseTemplateHash,
+          parentHash, // preferences_hash = parent_hash for parent templates
+          parentHash, // parent_hash
+          null, // parent_template_id = NULL (this IS the parent)
+          true, // is_parent = true
           parsedTermId,
           scheduleSystemType,
           electiveIdsJsonReserve,
           electiveHashReserve,
+          parsedCampusTrack, // campus_track (northampton/normal for Term 4 System 140)
         ]
       );
       
       if (reserveResult && reserveResult.length > 0) {
         // We successfully reserved this hash - we own it!
         reservedTemplateId = reserveResult[0].id;
-        console.log(`[generateTimetableSchedules] ✅ RESERVED base hash ${baseTemplateHash} (template ID: ${reservedTemplateId}) - we will generate`);
+        console.log(`[generateTimetableSchedules] ✅ RESERVED PARENT hash ${parentHash} (template ID: ${reservedTemplateId}) - we will generate ALL combinations`);
       } else {
         // Conflict - another request already reserved/saved this hash
         templateAlreadyExists = true;
-        console.log(`[generateTimetableSchedules] ⚠️  Base hash ${baseTemplateHash} already reserved - waiting for other request...`);
+        console.log(`[generateTimetableSchedules] ⚠️  Parent hash ${parentHash} already reserved - waiting for other request...`);
       }
     } catch (reserveError: any) {
       // If reserve fails, check if template exists
@@ -2175,49 +2562,120 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
         await new Promise(r => setTimeout(r, 1000)); // Wait 1 second between checks
         
         try {
+          // Wait for PARENT template to be generated
           const existingResult = await AppDataSource.query(
-            `SELECT id, schedule_count, base_schedules, is_generating FROM schedule_templates WHERE preferences_hash = $1 LIMIT 1`,
-            [baseTemplateHash]
+            `SELECT id, schedule_count, base_schedules, is_generating, is_parent FROM schedule_templates WHERE preferences_hash = $1 OR parent_hash = $1 LIMIT 1`,
+            [parentHash]
           );
           
           if (existingResult && existingResult.length > 0) {
             const row = existingResult[0];
-            const baseSchedules = row.base_schedules || [];
+            const parentSchedules = row.base_schedules || [];
             
             // Check if generation is complete (has schedules or is_generating is false)
-            if (baseSchedules.length > 0 || row.is_generating === false) {
-              console.log(`[generateTimetableSchedules] ✅ Other request completed - applying filters to ${baseSchedules.length} schedules`);
+            if (parentSchedules.length > 0 || row.is_generating === false) {
+              console.log(`[generateTimetableSchedules] ✅ Other request completed PARENT template - ${parentSchedules.length} schedules available`);
               
-              // APPLY FILTERS to the base schedules
-              const filteredSchedules = applyFiltersAndRescore(
-                baseSchedules,
-                sortedExcludedDays.length > 0 ? sortedExcludedDays : null,
-                sortedExcludedCoreIds,
-                preferredInstructorNames.length > 0 ? preferredInstructorNames : null,
-                50
-              );
-              
-              // Update access count
-              setImmediate(async () => {
+              // If we need a child template, derive it now
+              if (needsChildTemplate && sortedExcludedCoreIds && sortedExcludedCoreIds.length > 0) {
+                console.log(`[generateTimetableSchedules] 🔄 Deriving child template from completed parent...`);
+                
+                const childSchedules = deriveChildTemplateFromParent(parentSchedules, sortedExcludedCoreIds);
+                console.log(`[generateTimetableSchedules] Derived ${childSchedules.length} child schedules`);
+                
+                // Save child template to DB (synchronous - must persist before response)
                 try {
-                  await AppDataSource.query(
-                    `UPDATE schedule_templates SET access_count = access_count + 1, last_accessed_at = NOW() WHERE preferences_hash = $1`,
-                    [baseTemplateHash]
+                  const childElectiveHash = generateChildElectiveCombinationHash(
+                    sortedElectiveIds,
+                    sortedExcludedCoreIds
                   );
-                } catch (e) { /* ignore */ }
-              });
-              
-              cache.set(cacheKey, filteredSchedules);
-              
-              return res.json({
-                success: true,
-                data: filteredSchedules,
-                cached: false,
-                fromTemplate: true,
-                filtered: true,
-                templateId: row.id,
-                baseTemplateHash: baseTemplateHash,
-              });
+                  await AppDataSource.query(
+                    `INSERT INTO schedule_templates (
+                      preferences_hash, parent_hash, parent_template_id, is_parent,
+                      term_id, system_type, elective_course_ids, elective_combination_hash,
+                      excluded_core_course_ids, campus_track, base_schedules, schedule_count, 
+                      access_count, last_accessed_at, is_generating
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), false)
+                    ON CONFLICT (preferences_hash) DO UPDATE SET
+                      base_schedules = EXCLUDED.base_schedules,
+                      schedule_count = EXCLUDED.schedule_count,
+                      access_count = schedule_templates.access_count + 1,
+                      last_accessed_at = NOW()
+                    RETURNING id`,
+                    [
+                      childHash,
+                      parentHash,
+                      row.id,
+                      false,
+                      parsedTermId,
+                      scheduleSystemType,
+                      electiveIdsJsonReserve,
+                      childElectiveHash,
+                      JSON.stringify(sortedExcludedCoreIds),
+                      parsedCampusTrack,
+                      JSON.stringify(childSchedules),
+                      childSchedules.length,
+                      1,
+                    ]
+                  );
+                  console.log(`[generateTimetableSchedules] 💾 Saved child template to DB (derived from parent ${row.id}), hash ${childHash}`);
+                } catch (e: any) {
+                  console.error(`[generateTimetableSchedules] Failed to save child template (waiter path):`, e?.message);
+                }
+                
+                // Apply runtime filters to child schedules
+                const filteredSchedules = applyFiltersAndRescore(
+                  childSchedules,
+                  sortedExcludedDays.length > 0 ? sortedExcludedDays : null,
+                  null, // excludedCore already applied
+                  preferredInstructorNames.length > 0 ? preferredInstructorNames : null,
+                  50
+                );
+                
+                cache.set(cacheKey, filteredSchedules);
+                await saveSystemGenerationLogIfRequested(req, parsedTermId, scheduleSystemType, electiveCourseIds, excludedCoreCourseIds, filteredSchedules.length, `${filteredSchedules.length} schedule(s) generated (from template)`);
+                return res.json({
+                  success: true,
+                  data: filteredSchedules,
+                  cached: false,
+                  fromTemplate: true,
+                  derivedFromParent: true,
+                  parentTemplateId: row.id,
+                  childHash: childHash,
+                  parentHash: parentHash,
+                });
+              } else {
+                // No child needed - use parent directly with runtime filters
+                const filteredSchedules = applyFiltersAndRescore(
+                  parentSchedules,
+                  sortedExcludedDays.length > 0 ? sortedExcludedDays : null,
+                  null,
+                  preferredInstructorNames.length > 0 ? preferredInstructorNames : null,
+                  50
+                );
+                
+                // Update access count
+                setImmediate(async () => {
+                  try {
+                    await AppDataSource.query(
+                      `UPDATE schedule_templates SET access_count = access_count + 1, last_accessed_at = NOW() WHERE id = $1`,
+                      [row.id]
+                    );
+                  } catch (e) { /* ignore */ }
+                });
+                
+                cache.set(cacheKey, filteredSchedules);
+                await saveSystemGenerationLogIfRequested(req, parsedTermId, scheduleSystemType, electiveCourseIds, excludedCoreCourseIds, filteredSchedules.length, `${filteredSchedules.length} schedule(s) generated (from template)`);
+                return res.json({
+                  success: true,
+                  data: filteredSchedules,
+                  cached: false,
+                  fromTemplate: true,
+                  filtered: true,
+                  templateId: row.id,
+                  parentHash: parentHash,
+                });
+              }
             }
             
             console.log(`[generateTimetableSchedules] Waiting for other request... (attempt ${attempt + 1}/10)`);
@@ -2231,8 +2689,8 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
       console.warn(`[generateTimetableSchedules] Timeout waiting for other request - will generate ourselves`);
     }
 
-    // We own this hash (reserved successfully) - proceed with BASE generation (no filters applied)
-    console.log(`[generateTimetableSchedules] 🔨 Starting BASE schedule generation for hash ${baseTemplateHash}`);
+    // We own this hash (reserved successfully) - proceed with PARENT generation (ALL combinations, no filters)
+    console.log(`[generateTimetableSchedules] 🔨 Starting PARENT template generation for hash ${parentHash}`);
     console.log(`  Preferences: term=${parsedTermId}, system=${scheduleSystemType}, excluded=${excludedDaysKey}, electives=${electiveIdsKey}, excluded_core=${excludedCoreIdsKey}, instructors=${preferredInstructorNames.length}`);
 
     // Skip database cache lookup to prevent timeout issues
@@ -2276,59 +2734,44 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
       throw new Error("Max retries exceeded");
     };
 
-    // Verify term exists and is published
-    const termRepo = AppDataSource.getRepository(Term);
-    const term = await retryQuery(async () => {
-      return await termRepo.findOne({
-        where: { id: parsedTermId, is_published: true },
-      });
-    });
-
-    if (!term) {
-      return res.status(404).json({
+    // Use term and classes already fetched for template hash (closed state)
+    const term = termEarly;
+    const actualTermId = term.id;
+    let classes = classesEarly;
+    if (requiresCampusTrackSeparation(parseInt(term.term_number), scheduleSystemType) && !parsedCampusTrack) {
+      return res.status(400).json({
         success: false,
-        message: "Published term not found",
+        message: "This term requires campus track selection. Please choose 'northampton' or 'normal'.",
+        requiresCampusTrack: true,
       });
     }
-
-    // Capture actual term ID from database (source of truth for logging)
-    const actualTermId = term.id;
-
-    // Get all classes for this term and system
-    const classRepo = AppDataSource.getRepository(Class);
-    const classes = await retryQuery(async () => {
-      return await classRepo.find({
-        where: { 
-          term_id: term.id,
-          system_type: scheduleSystemType,
-        },
-        order: { class_code: "ASC" },
-      });
-    });
-
-    console.log(`[generateTimetableSchedules] Found ${classes.length} classes for term ${term.id}:`, 
-      classes.map(c => ({ id: c.id, class_code: c.class_code }))
-    );
-
     if (classes.length === 0) {
+      await saveSystemGenerationLogIfRequested(req, parsedTermId, scheduleSystemType, electiveCourseIds, excludedCoreCourseIds, 0, "No classes found for term");
       return res.json({
         success: true,
         data: [],
-        message: "No classes found for this term. Please create classes first.",
+        message: parsedCampusTrack 
+          ? `No ${parsedCampusTrack} classes found for this term.` 
+          : "No classes found for this term. Please create classes first.",
       });
     }
 
-    // Get all class courses with full data
+    // Get all class courses with full data; exclude closed (closed assignments are not in generation)
     const classCourseRepo = AppDataSource.getRepository(ClassCourse);
     const classIds = classes.map(c => c.id);
-    const allClassCourses = classIds.length > 0 ? await retryQuery(async () => {
+    let allClassCourses = classIds.length > 0 ? await retryQuery(async () => {
       return await classCourseRepo.find({
         where: { class_id: In(classIds) },
         relations: ["course", "class"],
       });
     }) : [];
+    const totalClassCourses = allClassCourses.length;
+    allClassCourses = allClassCourses.filter(cc => !cc.closed);
+    if (totalClassCourses !== allClassCourses.length) {
+      console.log(`[generateTimetableSchedules] Excluded ${totalClassCourses - allClassCourses.length} closed class-course(s); ${allClassCourses.length} open`);
+    }
 
-    console.log(`[generateTimetableSchedules] Found ${allClassCourses.length} class-course assignments across ${classes.length} classes`);
+    console.log(`[generateTimetableSchedules] Found ${allClassCourses.length} class-course assignments (open) across ${classes.length} classes`);
     
     // Log class distribution
     const coursesByClass = new Map<number, number>();
@@ -2343,6 +2786,7 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
     );
 
     if (allClassCourses.length === 0) {
+      await saveSystemGenerationLogIfRequested(req, parsedTermId, scheduleSystemType, electiveCourseIds, excludedCoreCourseIds, 0, "No courses assigned to classes");
       return res.json({
         success: true,
         data: [],
@@ -2409,14 +2853,12 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
 
     console.log(`[generateTimetableSchedules] Found ${coreCoursesData.length} core courses and ${electiveCoursesData.length} elective courses`);
 
-    // Filter out excluded core courses FIRST
-    const filteredCoreCoursesData = sortedExcludedCoreIds && sortedExcludedCoreIds.length > 0
-      ? coreCoursesData.filter(cd => !sortedExcludedCoreIds.includes(cd.course.id))
-      : coreCoursesData;
-
+    // PARENT TEMPLATE: Include ALL core courses (NO filtering by excludedCore)
+    // Excluded core courses are handled by deriving child templates later
+    // This ensures the parent template contains ALL possible combinations
+    console.log(`[generateTimetableSchedules] 📦 Generating PARENT template - including ALL ${coreCoursesData.length} core courses`);
     if (sortedExcludedCoreIds && sortedExcludedCoreIds.length > 0) {
-      console.log(`[generateTimetableSchedules] Excluding ${sortedExcludedCoreIds.length} core course(s): ${sortedExcludedCoreIds.join(", ")}`);
-      console.log(`[generateTimetableSchedules] Core courses after exclusion: ${filteredCoreCoursesData.length} (from ${coreCoursesData.length})`);
+      console.log(`[generateTimetableSchedules] Note: excludedCore (${sortedExcludedCoreIds.join(",")}) will be filtered AFTER generation (child template derivation)`);
     }
 
     // Filter elective courses by selected IDs
@@ -2426,12 +2868,12 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
 
     console.log(`[generateTimetableSchedules] Selected ${selectedElectiveCourses.length} elective courses`);
 
-    // Check if core courses have sessions (using filtered core courses)
-    const coreCoursesWithSessions = filteredCoreCoursesData.filter(cd => {
+    // Check if core courses have sessions (ALL core courses for parent)
+    const coreCoursesWithSessions = coreCoursesData.filter(cd => {
       return cd.components.some((comp: any) => comp.sessions && comp.sessions.length > 0);
     });
 
-    console.log(`[generateTimetableSchedules] Found ${coreCoursesWithSessions.length} core courses with scheduled sessions (after excluding ${sortedExcludedCoreIds?.length || 0} excluded core courses)`);
+    console.log(`[generateTimetableSchedules] Found ${coreCoursesWithSessions.length} core courses with scheduled sessions (ALL core courses for PARENT template)`);
 
     // Check if there are any courses with sessions
     const coursesWithSessions = [...coreCoursesWithSessions, ...selectedElectiveCourses].filter(cd => {
@@ -2441,6 +2883,7 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
     console.log(`[generateTimetableSchedules] Found ${coursesWithSessions.length} courses with scheduled sessions (${coreCoursesWithSessions.length} core + ${selectedElectiveCourses.length} elective)`);
 
     if (coursesWithSessions.length === 0) {
+      await saveSystemGenerationLogIfRequested(req, parsedTermId, scheduleSystemType, electiveCourseIds, excludedCoreCourseIds, 0, "No courses with scheduled sessions");
       return res.json({
         success: true,
         data: [],
@@ -2500,27 +2943,28 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
     console.log(`  - Classes with courses that have sessions: ${classesInUse.size} (${Array.from(classesInUse).sort().join(", ")})`);
     console.log(`  - Classes missing sessions: ${Array.from(classesWithCourses).filter(c => !classesInUse.has(c)).sort().join(", ") || "None"}`);
 
-    // Generate BASE schedules WITHOUT filters (no excluded days, no instructor preferences)
+    // Generate PARENT template schedules (ALL combinations, no excluded core courses)
     // Filters are applied at REQUEST TIME, not generation time
-    console.log(`[generateTimetableSchedules] Generating BASE schedules (no filters applied during generation)`);
-    const baseSchedules = generateScheduleCombinations(
-      coreCoursesWithSessions,
+    console.log(`[generateTimetableSchedules] 🔨 Generating PARENT template schedules (ALL combinations, no filters)`);
+    const parentSchedules = generateScheduleCombinations(
+      coreCoursesWithSessions, // ALL core courses for parent
       electiveCoursesWithSessions,
-      [], // NO excluded days during base generation
-      []  // NO instructor preferences during base generation
+      [], // NO excluded days during parent generation
+      []  // NO instructor preferences during parent generation
     );
 
-    console.log(`[generateTimetableSchedules] Generated ${baseSchedules.length} BASE schedule(s)`);
+    console.log(`[generateTimetableSchedules] Generated ${parentSchedules.length} PARENT schedule(s) (ALL combinations)`);
 
     // Sort by base score (days, gaps only)
-    baseSchedules.sort((a, b) => b.score - a.score);
+    parentSchedules.sort((a, b) => b.score - a.score);
 
-    // Store more schedules in template (up to 300) so filtering has enough to work with
-    const topSchedules = baseSchedules.slice(0, 300);
+    // Store up to 400 valid combinations in PARENT template (admin template requirement)
+    const topParentSchedules = parentSchedules.slice(0, 400);
 
-    console.log(`[generateTimetableSchedules] Storing top ${topSchedules.length} BASE schedule(s) in template`);
+    console.log(`[generateTimetableSchedules] Storing top ${topParentSchedules.length} PARENT schedule(s) in template`);
 
-    if (topSchedules.length === 0 && baseSchedules.length === 0) {
+    if (topParentSchedules.length === 0 && parentSchedules.length === 0) {
+      await saveSystemGenerationLogIfRequested(req, parsedTermId, scheduleSystemType, electiveCourseIds, excludedCoreCourseIds, 0, "No valid schedules could be generated");
       return res.json({
         success: true,
         data: [],
@@ -2528,31 +2972,39 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
       });
     }
     
-    // NOW apply filters for THIS request (the base schedules will be saved to template)
-    console.log(`[generateTimetableSchedules] 🔄 Applying filters to generated schedules...`);
+    // Determine schedules to use for this request:
+    // - If no excludedCore → Use parent schedules directly
+    // - If excludedCore → Derive child schedules from parent
+    let schedulesForThisRequest = topParentSchedules;
+    let childSchedules: any[] | null = null;
+    
+    if (needsChildTemplate && sortedExcludedCoreIds && sortedExcludedCoreIds.length > 0) {
+      console.log(`[generateTimetableSchedules] 🔄 Deriving CHILD schedules for excluded core: ${sortedExcludedCoreIds.join(",")}`);
+      childSchedules = deriveChildTemplateFromParent(topParentSchedules, sortedExcludedCoreIds);
+      schedulesForThisRequest = childSchedules;
+      console.log(`[generateTimetableSchedules] Derived ${childSchedules.length} child schedules (filtered from ${topParentSchedules.length} parent schedules)`);
+    }
+    
+    // Apply runtime filters (excludedDays, preferredInstructors)
+    console.log(`[generateTimetableSchedules] 🔄 Applying runtime filters to schedules...`);
     const filteredSchedules = applyFiltersAndRescore(
-      topSchedules,
+      schedulesForThisRequest,
       sortedExcludedDays.length > 0 ? sortedExcludedDays : null,
-      sortedExcludedCoreIds,
+      null, // excludedCore already handled above (child derivation)
       preferredInstructorNames.length > 0 ? preferredInstructorNames : null,
       50
     );
     
     console.log(`[generateTimetableSchedules] ✅ After filtering: ${filteredSchedules.length} schedules for this request`);
 
-    // UPDATE the reserved BASE template with actual schedules (non-blocking)
-    // We already reserved this hash with a placeholder, now fill in the real data
-    // These are BASE schedules (no filters applied) - filters are applied at request time
-    setTimeout(async () => {
-      try {
-        const isReady = await ensureDbConnection();
-        if (!isReady) {
-          console.warn(`[generateTimetableSchedules] Database not available, skipping template update`);
-          return;
-        }
-
-        // UPDATE the existing reserved template with BASE schedules
-        // Set is_generating to false to signal completion
+    // UPDATE the reserved PARENT template with actual schedules (synchronous so DB is persisted before response)
+    // This ensures waiters see the template when polling and data is not lost if process exits
+    let parentTemplateId: number | null = null;
+    try {
+      const isReady = await ensureDbConnection();
+      if (!isReady) {
+        console.warn(`[generateTimetableSchedules] Database not available, skipping template update`);
+      } else {
         const updateResult = await AppDataSource.query(
           `UPDATE schedule_templates 
            SET base_schedules = $1, 
@@ -2563,22 +3015,63 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
            WHERE preferences_hash = $3
            RETURNING id`,
           [
-            JSON.stringify(topSchedules),
-            topSchedules.length,
-            baseTemplateHash,
+            JSON.stringify(topParentSchedules),
+            topParentSchedules.length,
+            parentHash,
           ]
         );
-
         if (updateResult && updateResult.length > 0) {
-          console.log(`[generateTimetableSchedules] 💾 Updated BASE template with hash ${baseTemplateHash} for term ${actualTermId} (${topSchedules.length} schedules)`);
+          parentTemplateId = updateResult[0].id;
+          console.log(`[generateTimetableSchedules] 💾 Saved PARENT template to DB (ID: ${parentTemplateId}) hash ${parentHash} (${topParentSchedules.length} schedules)`);
         } else {
-          console.log(`[generateTimetableSchedules] Base template with hash ${baseTemplateHash} not found for update (unexpected)`);
+          console.log(`[generateTimetableSchedules] PARENT template with hash ${parentHash} not found for update (unexpected)`);
         }
-      } catch (error: any) {
-        // Log but don't block - template update is non-critical
-        console.warn(`[generateTimetableSchedules] Template update error:`, error.message?.substring(0, 50));
       }
-    }, 100);
+    } catch (saveError: any) {
+      console.warn(`[generateTimetableSchedules] Failed to save PARENT template to DB:`, saveError.message?.substring(0, 80));
+    }
+
+    // Save child template to DB (synchronous - must persist before response)
+    if (childSchedules && childSchedules.length > 0 && parentTemplateId) {
+      try {
+        const childElectiveHash = generateChildElectiveCombinationHash(
+          sortedElectiveIds,
+          sortedExcludedCoreIds
+        );
+        await AppDataSource.query(
+          `INSERT INTO schedule_templates (
+            preferences_hash, parent_hash, parent_template_id, is_parent,
+            term_id, system_type, elective_course_ids, elective_combination_hash,
+            excluded_core_course_ids, campus_track, base_schedules, schedule_count, 
+            access_count, last_accessed_at, is_generating
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), false)
+          ON CONFLICT (preferences_hash) DO UPDATE SET
+            base_schedules = EXCLUDED.base_schedules,
+            schedule_count = EXCLUDED.schedule_count,
+            access_count = schedule_templates.access_count + 1,
+            last_accessed_at = NOW()
+          RETURNING id`,
+          [
+            childHash,
+            parentHash,
+            parentTemplateId,
+            false,
+            parsedTermId,
+            scheduleSystemType,
+            electiveIdsJsonReserve,
+            childElectiveHash,
+            JSON.stringify(sortedExcludedCoreIds),
+            parsedCampusTrack,
+            JSON.stringify(childSchedules),
+            childSchedules.length,
+            1,
+          ]
+        );
+        console.log(`[generateTimetableSchedules] 💾 Saved CHILD template to DB (parent ${parentTemplateId}), hash ${childHash}`);
+      } catch (e: any) {
+        console.error(`[generateTimetableSchedules] Failed to save child template (generator path):`, e?.message);
+      }
+    }
 
     // NOTE: schedule_cache table is no longer used - only schedule_templates with filtering
     // This reduces database writes by 50%
@@ -2588,22 +3081,28 @@ export const generateTimetableSchedules = async (req: Request, res: Response) =>
 
     // Handle case where all schedules filtered out
     if (filteredSchedules.length === 0) {
+      await saveSystemGenerationLogIfRequested(req, parsedTermId, scheduleSystemType, electiveCourseIds, excludedCoreCourseIds, 0, "No schedules match your preferences");
       return res.json({
         success: true,
         data: [],
         message: "No schedules match your preferences. Try removing some excluded days or changing your electives.",
-        baseTemplateHash: baseTemplateHash,
+        parentHash: parentHash,
+        childHash: childHash,
       });
     }
 
+    await saveSystemGenerationLogIfRequested(req, parsedTermId, scheduleSystemType, electiveCourseIds, excludedCoreCourseIds, filteredSchedules.length, `${filteredSchedules.length} schedule(s) generated`);
     return res.json({
       success: true,
       data: filteredSchedules,
       cached: false,
       fromTemplate: false,
       filtered: true,
-      baseTemplateHash: baseTemplateHash,
+      parentHash: parentHash,
+      childHash: childHash,
       generatedNew: true,
+      isParent: !needsChildTemplate,
+      derivedChild: needsChildTemplate,
     });
   } catch (error) {
     console.error("Error generating timetable schedules:", error);
@@ -2767,11 +3266,12 @@ export function generateScheduleCombinations(
   console.log(`[generateScheduleCombinations] Total unique classes in combinations: ${allClassesInCombinations.size} - ${Array.from(allClassesInCombinations).sort().join(", ")}`);
 
   // Generate ALL possible combinations and permutations
-  // Keep top schedules during generation, then return top 50
+  // Keep top 400 valid schedules during generation for template storage; return up to 400
   const topSchedules: any[] = [];
-  const MAX_KEEP = 300; // Keep top 300 during generation to ensure we have excellent options for filtering
-  const TARGET_COUNT = 100; // Return top 100 schedules to user
-  const MAX_COMBINATIONS = 5000000; // Increased to 5 million to explore MORE combinations
+  const TEMPLATE_MAX_SCHEDULES = 400; // Admin template: save up to 400 valid combinations
+  const MAX_KEEP = TEMPLATE_MAX_SCHEDULES; // Keep top 400 during generation
+  const TARGET_COUNT = TEMPLATE_MAX_SCHEDULES; // Return up to 400 for template
+  const MAX_COMBINATIONS = 5000000; // Cap for sampling when total combinations exceed this
   
   // If no excluded days, we can be more aggressive with combinations
   const hasExcludedDays = excludedDays && excludedDays.length > 0;
@@ -2786,14 +3286,14 @@ export function generateScheduleCombinations(
   
   console.log(`[generateScheduleCombinations] Total possible combinations: ${totalCombinations}, Excluded days: ${excludedDays.length}`);
   
-  // Only use sampling if combinations exceed limit
+  // Only use sampling if combinations exceed limit - otherwise process ALL combinations (don't miss any)
   const useSampling = totalCombinations > effectiveMaxCombinations;
   const sampleSize = useSampling ? effectiveMaxCombinations : totalCombinations;
   
   if (useSampling) {
     console.log(`[generateScheduleCombinations] Using sampling strategy: processing ${sampleSize} out of ${totalCombinations} combinations`);
   } else {
-    console.log(`[generateScheduleCombinations] Processing ALL ${totalCombinations} combinations`);
+    console.log(`[generateScheduleCombinations] Processing ALL ${totalCombinations} combinations (no sampling - every combination will be tried)`);
   }
   
   // Generate combinations iteratively
@@ -2855,11 +3355,21 @@ export function generateScheduleCombinations(
   let bestGaps = Infinity;
   let bestExcludedDays = Infinity;
   
-  // Process from multiple starting positions to ensure complete exploration
-  for (const startIndices of startingPositions) {
+  // When NOT sampling: single pass from [0,0,...,0] through all indices - no combination is skipped.
+  // Splitting across starting positions with a per-position limit would skip combinations.
+  const processAllCombinations = !useSampling;
+  const positionsToUse = processAllCombinations ? [new Array(courseOptions.length).fill(0)] : startingPositions;
+  if (processAllCombinations) {
+    console.log(`[generateScheduleCombinations] Processing ALL ${totalCombinations} combinations in single pass (no sampling - every combination will be tried)`);
+  }
+
+  // Process from starting position(s)
+  for (const startIndices of positionsToUse) {
     const indices = [...startIndices];
     let localProcessed = 0;
-    const localMaxProcessed = Math.floor(sampleSize / startingPositions.length);
+    const localMaxProcessed = processAllCombinations
+      ? totalCombinations // process every combination until exhausted
+      : Math.floor(sampleSize / startingPositions.length);
     
     do {
       // Build current combination
@@ -2872,27 +3382,26 @@ export function generateScheduleCombinations(
         combination.push(courseOptions[i][indices[i]]);
       }
       
-      // Create a unique key for this combination to avoid duplicates
+      // Create a unique key for this combination to avoid duplicates (skip when processing all - single start = no duplicates)
       const combinationKey = indices.join(",");
-      if (seenCombinations.has(combinationKey)) {
-        // Skip duplicate combination
+      if (!processAllCombinations && seenCombinations.has(combinationKey)) {
         if (!generateNextCombination(indices)) break;
         continue;
       }
-      seenCombinations.add(combinationKey);
-      
-      // OPTIMIZATION 1: Constraint Propagation - Check conflicts BEFORE building schedule
-      // This skips 70-90% of invalid combinations early, saving significant time
-      if (hasConflicts(combination, conflictMatrix)) {
+      if (!processAllCombinations) seenCombinations.add(combinationKey);
+
+      // When processing ALL combinations (e.g. Other section), always try buildSchedule - don't filter by conflict matrix.
+      // This ensures we try every combination; buildSchedule does its own collision check.
+      const skipConflictCheck = processAllCombinations;
+      if (!skipConflictCheck && hasConflicts(combination, conflictMatrix)) {
         consecutiveFailures++;
         processedCount++;
         localProcessed++;
         if (!generateNextCombination(indices)) break;
-        continue; // Skip this combination - it has conflicts
+        continue;
       }
-      
-      // Build schedule from this combination (only if no conflicts)
-      // buildSchedule will ensure each course-class bundle includes ALL its components
+
+      // Build schedule from this combination (collision check inside buildSchedule is the source of truth)
       const schedule = buildSchedule(combination, excludedDays, preferredInstructors);
       if (schedule) {
         consecutiveFailures = 0;
@@ -2967,6 +3476,29 @@ export function generateScheduleCombinations(
     // We want to keep exploring to find the absolute best
   }
   
+  // FALLBACK: When 0 valid schedules (e.g. Other section), try every combination without conflict-matrix skip.
+  // Relies only on buildSchedule's collision check - catches mismatch between matrix and actual session keys.
+  // Run for any totalCombinations up to 500k so Other section (e.g. 32k combinations) always gets a full try.
+  const FALLBACK_MAX_COMBINATIONS = 500000;
+  if (validSchedulesFound === 0 && totalCombinations <= FALLBACK_MAX_COMBINATIONS) {
+    console.log(`[generateScheduleCombinations] Fallback: 0 valid schedules, trying ALL ${totalCombinations} combinations without conflict-matrix skip`);
+    const indices = new Array(courseOptions.length).fill(0);
+    let fallbackTried = 0;
+    do {
+      const combination: any[] = courseOptions.map((opts, i) => opts[indices[i]]);
+      const schedule = buildSchedule(combination, excludedDays, preferredInstructors);
+      if (schedule) {
+        validSchedulesFound++;
+        insertSorted(topSchedules, schedule, MAX_KEEP);
+        if (validSchedulesFound <= 5) {
+          console.log(`[generateScheduleCombinations] Fallback: found valid schedule #${validSchedulesFound} (${schedule.totalDays} days, ${schedule.gaps} gaps)`);
+        }
+      }
+      fallbackTried++;
+    } while (generateNextCombination(indices) && fallbackTried < totalCombinations);
+    console.log(`[generateScheduleCombinations] Fallback: tried ${fallbackTried} combinations, found ${validSchedulesFound} valid schedule(s)`);
+  }
+
   // After all starting positions, do a final intensive search around the best candidates
   if (topSchedules.length > 0 && processedCount < sampleSize) {
     console.log(`[generateScheduleCombinations] Starting intensive search around best candidates...`);
@@ -3460,12 +3992,22 @@ export function buildSchedule(combination: any[], excludedDays: string[], prefer
     // This ensures the course is taken as a complete bundle from this specific class
     for (const component of courseData.components) {
       if (component.sessions && component.sessions.length > 0) {
+        // Clean up class_code by removing "NORTHAMPTON ONLY" suffix for display
+        // This makes the schedule display cleaner while keeping the same data
+        const cleanClassCode = courseData.class.class_code
+          ? courseData.class.class_code.replace(/\s*NORTHAMPTON\s*ONLY\s*/gi, '').trim()
+          : courseData.class.class_code;
+        
         // Include ALL sessions for this component (usually 1, but handle multiple)
         const sessions = component.sessions.map((session: any) => ({
           ...session,
           component_type: component.component_type,
           course: courseData.course,
-          class: courseData.class,
+          class: {
+            ...courseData.class,
+            class_code: cleanClassCode, // Use cleaned class code
+            original_class_code: courseData.class.class_code, // Keep original for reference
+          },
         }));
         
         // Store all sessions for this component type
@@ -3510,25 +4052,37 @@ export function buildSchedule(combination: any[], excludedDays: string[], prefer
       courseSessions.push(...sessions);
     });
     
+    // Normalize day/slot to match conflict matrix (String day, Number slot)
+    const slotKey = (s: any) => `${String(s.day)}_${Number(s.slot)}`;
+
     // Early collision check: check collisions before adding
     for (const session of courseSessions) {
-      const key = `${session.day}_${session.slot}`;
+      const key = slotKey(session);
       if (slotMap.has(key)) {
         // Collision detected - this combination is invalid
         return null; // Collision detected - early exit
       }
     }
-    
+
     // No collisions, add sessions
     for (const session of courseSessions) {
-      const key = `${session.day}_${session.slot}`;
+      const key = slotKey(session);
       slotMap.set(key, session);
-      schedule.days.add(session.day);
+      schedule.days.add(String(session.day));
     }
 
+    // Clean up class_code by removing "NORTHAMPTON ONLY" suffix for display
+    const cleanClassCode = courseData.class.class_code
+      ? courseData.class.class_code.replace(/\s*NORTHAMPTON\s*ONLY\s*/gi, '').trim()
+      : courseData.class.class_code;
+    
     schedule.courses.push({
       course: courseData.course,
-      class: courseData.class,
+      class: {
+        ...courseData.class,
+        class_code: cleanClassCode, // Use cleaned class code for display
+        original_class_code: courseData.class.class_code, // Keep original for reference
+      },
       sessions: courseSessions,
     });
 
